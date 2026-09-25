@@ -14,13 +14,49 @@
 
 const BASE = 'https://itunes.apple.com';
 
-/** Country affects which catalogue is searched. Changeable in Settings. */
+/**
+ * Which store is searched.
+ *
+ * A warning about Korea: the KR store carries no songs on this API at all,
+ * only music videos, which have no length and so are no use for the progress
+ * bar. Searching in Korean works perfectly well from any other store, so the
+ * default stays US and an empty result falls back to it automatically.
+ */
 export function getCountry() {
   return localStorage.getItem('np-country') || 'US';
 }
 
 export function setCountry(code) {
   localStorage.setItem('np-country', (code || 'US').toUpperCase().slice(0, 2));
+}
+
+/**
+ * What the words you typed are matched against.
+ *
+ * 'all' throws the words at titles, artists and albums together, which is what
+ * you want most of the time.
+ *
+ * 'artist' is a different request entirely: it finds the performer first, then
+ * asks for their catalogue. That matters when the name is also a common word.
+ * Searching Burial the ordinary way returns a dozen unrelated songs called
+ * Burial and never the artist; asking for the artist returns Archangel.
+ *
+ * There is deliberately no 'title' scope. The API takes an `attribute`
+ * parameter that is supposed to do this, but it is silently ignored for music:
+ * songTerm and artistTerm come back byte-identical to no attribute at all.
+ * A scope that changed nothing would just be a lie on screen.
+ */
+export const SCOPES = [
+  { id: 'all', label: 'Everything' },
+  { id: 'artist', label: 'By artist' },
+];
+
+export function getScope() {
+  return localStorage.getItem('np-scope') || 'all';
+}
+
+export function setScope(id) {
+  localStorage.setItem('np-scope', SCOPES.some(s => s.id === id) ? id : 'all');
 }
 
 // ---------------------------------------------------------------------------
@@ -111,24 +147,72 @@ function normalise(track) {
 // The two things the app asks for
 // ---------------------------------------------------------------------------
 
-export async function searchSongs(term, { signal } = {}) {
+/**
+ * Search. Returns { songs, searchedCountry, fellBack }.
+ *
+ * Korean, Japanese and every other script work fine here. What comes back is
+ * whatever name Apple files the track under internationally, which for Korean
+ * releases is usually the English or romanised one: search 밤편지 and the
+ * result reads "Through the Night by IU". The artist is the thing to
+ * recognise it by.
+ */
+export async function searchSongs(term, { scope = getScope() } = {}) {
   const trimmed = (term || '').trim();
-  if (!trimmed) return [];
+  const empty = { songs: [], artistName: null, searchedCountry: getCountry(), fellBack: false };
+  if (!trimmed) return empty;
 
   const link = parseAppleMusicLink(trimmed);
   if (link) {
     const one = await lookupById(link);
-    return one ? [one] : [];
+    return { ...empty, songs: one ? [one] : [] };
   }
 
-  const data = await request('/search', {
-    term: trimmed,
+  const country = getCountry();
+  const run = scope === 'artist' ? runByArtist : runEverything;
+
+  let found = await run(trimmed, country);
+
+  // Some stores sell no songs at all through this API. Rather than show an
+  // empty screen, ask the US store, which carries nearly everything.
+  if (found.songs.length === 0 && country !== 'US') {
+    const fallback = await run(trimmed, 'US');
+    if (fallback.songs.length > 0) {
+      return { ...fallback, searchedCountry: 'US', fellBack: true };
+    }
+  }
+
+  return { ...found, searchedCountry: country, fellBack: false };
+}
+
+/** The ordinary search: the words go against everything at once. */
+async function runEverything(term, country) {
+  const data = await request('/search', { term, entity: 'song', limit: 25, country });
+  const songs = (data.results || [])
+    .filter(r => r.trackId && r.trackTimeMillis)
+    .map(normalise);
+  return { songs, artistName: null };
+}
+
+/**
+ * Find the performer, then ask for their catalogue. Two requests instead of
+ * one, which is why it is a separate mode rather than the default.
+ */
+async function runByArtist(term, country) {
+  const found = await request('/search', { term, entity: 'musicArtist', limit: 5, country });
+  const artist = (found.results || []).find(a => a.artistId);
+  if (!artist) return { songs: [], artistName: null };
+
+  const data = await request('/lookup', {
+    id: artist.artistId,
     entity: 'song',
-    limit: 25,
-    country: getCountry(),
+    limit: 50,
+    country,
   });
-  if (signal && signal.aborted) return [];
-  return (data.results || []).filter(r => r.trackId).map(normalise);
+  const songs = (data.results || [])
+    // The first row that comes back is the artist, not a track.
+    .filter(r => r.wrapperType === 'track' && r.trackId && r.trackTimeMillis)
+    .map(normalise);
+  return { songs, artistName: artist.artistName || null };
 }
 
 export async function lookupById(id) {

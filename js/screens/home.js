@@ -141,7 +141,7 @@ async function fillDrafts(box, app, label) {
       h('span', { class: 'item__main' },
         h('span', { class: 'item__title' }, draft.project.song.title || 'No song yet'),
         h('span', { class: 'item__sub' },
-          `${draft.project.song.artist || 'Waiting for a song'}  ${when(draft.updatedAt)}`),
+          `${draft.project.song.artist || 'Waiting for a song'}  /  ${when(draft.updatedAt)}`),
       ),
       h('span', { class: 'item__value' },
         `${draft.project.loopSeconds.toFixed(1)}s`),
@@ -184,7 +184,7 @@ async function fillStyles(box, app, label) {
     },
       h('span', { class: 'item__main' },
         h('span', { class: 'item__title' }, style.name),
-        h('span', { class: 'item__sub' }, `${style.project.template}  ${when(style.updatedAt)}`),
+        h('span', { class: 'item__sub' }, `${style.project.template}  /  ${when(style.updatedAt)}`),
       ),
       icon('caret-right', { size: 'sm' }),
     );

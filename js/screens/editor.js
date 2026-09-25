@@ -382,7 +382,7 @@ function layersTab(box, app) {
         h('span', { class: 'item__sub' },
           [LAYER_LABELS[layer.type], layer.effects.length
             ? `${layer.effects.length} effect${layer.effects.length > 1 ? 's' : ''}` : null]
-            .filter(Boolean).join('  ')),
+            .filter(Boolean).join('  /  ')),
       ),
     );
 
@@ -606,7 +606,7 @@ function songTab(box, app) {
       h('span', { class: 'item__main' },
         h('span', { class: 'item__title' }, song.title || 'No song yet'),
         h('span', { class: 'item__sub' },
-          [song.artist, song.album, song.year].filter(Boolean).join('  ') || 'Pick one to begin'),
+          [song.artist, song.album, song.year].filter(Boolean).join('  /  ') || 'Pick one to begin'),
       ),
       song.version ? h('span', { class: 'tag' }, song.version) : null,
     ),

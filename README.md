@@ -90,7 +90,7 @@ rather than a broken deploy. Wait ten minutes, or test in a private tab.
 | Screen | What it is for |
 |---|---|
 | **Home** | Start with a photo, choose the slide shape, reopen a draft or a saved style. |
-| **Song** | Search the iTunes catalogue, or type the details yourself. Set where your Instagram clip starts. |
+| **Song** | Search the iTunes catalogue by anything or by artist, or type the details yourself. Set where your Instagram clip starts. |
 | **Editor** | Preview at the top, loop bar under it, and a sheet of controls: Layers, Effects, Animation, Song. |
 | **Export** | Both slides side by side, what the file is, and two taps to get it into Photos. |
 
@@ -220,6 +220,25 @@ nothing flickers.
 in answer to a real tap, and that permission has already expired by the time a
 long render finishes.
 
+**Searching in Korean works; the Korean store does not.** Any script can be
+typed into the search box and the right track comes back. What comes back is
+the name Apple files the track under internationally, so 밤편지 returns
+"Through the Night by IU"; the artist is the thing to recognise it by. Some
+titles do come back in Korean. Separately, the **KR store returns no songs at
+all** through this API, only music videos, which carry no length and so cannot
+drive the progress bar. Setting the store to KR therefore falls back to the US
+store automatically and says so on screen.
+
+**Searching by artist is a different request, not a filter.** The API documents
+an `attribute` parameter (`artistTerm`, `songTerm`) that is supposed to narrow
+what the words match against. For music it is silently ignored: `artistTerm`,
+`songTerm` and no attribute at all return byte-identical results. So **By
+artist** instead finds the performer with `entity=musicArtist`, then asks for
+that artist's catalogue by id. Two requests rather than one, which is why it is
+a mode you choose rather than the default. It is the difference between
+twenty-five songs called Burial and Burial's actual records. There is no
+"title" scope for the same reason: it could not have done anything.
+
 **Song search needs no fallback in practice.** The iTunes Search API and the
 artwork CDN both send `Access-Control-Allow-Origin: *`, so a normal fetch works
 and covers load without spoiling the canvas. The JSONP path in `js/itunes.js`
@@ -257,6 +276,11 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.4.0** - Search rebuilt. A **By artist** mode that finds the performer and
+  lists their catalogue, an automatic fall back to the US store when the chosen
+  one carries no songs, and a Song screen that shows either the results or the
+  track you picked, never both, so the button that continues is no longer
+  buried under twenty-five rows.
 - **0.3.0** - The look rebuilt as a darkroom bench: no filled panels anywhere,
   title cards, bottle labels with measured values, an enlarger timer in place
   of the loop bar, and the slide sitting on black with no frame around it.

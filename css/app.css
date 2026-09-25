@@ -376,6 +376,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .search { position: relative; display: flex; align-items: center; }
 .search .icon { position: absolute; left: 0; color: var(--dim); pointer-events: none; }
 .search .input { padding-left: 28px; }
+/* Pulled up under the search line: the scope belongs to the box above it. */
+.search + .choices { margin-top: -2px; }
 
 /* --- Sliders -------------------------------------------------------------
    A measuring scale: a hairline track, an amber fill, and a plain upright
@@ -521,6 +523,15 @@ button, input, select, textarea { font: inherit; color: inherit; }
   font-size: 11.5px;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
+}
+/* A search result carries two readings: how long it is, and which recording
+   this is. They stack, right-aligned, at the end of the row. */
+.item__value--stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  text-align: right;
 }
 
 /* Selected: the title lights up and a marker appears in the gutter.

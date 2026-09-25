@@ -4,119 +4,316 @@
  * Find the track, then say where your Instagram clip starts. The clip start is
  * what the progress bar on the slide counts from, so the numbers on the slide
  * match the ones in Instagram.
+ *
+ * The screen has two states and only ever shows one of them:
+ *
+ *   CHOOSING  the search box and the results
+ *   CHOSEN    the track you picked, the clip picker, and the way onward
+ *
+ * That is deliberate. With both on screen at once the button that continues
+ * sits underneath twenty-five results, and you have to scroll past all of them
+ * every single time.
  */
 
-import { h, clear, icon, sliderRow, emptyState, toast, titleCard, bottle } from '../ui.js';
+import { h, clear, icon, sliderRow, segmented, emptyState, toast, titleCard, bottle } from '../ui.js';
 import { formatTime } from '../model.js';
-import { searchSongs, fetchCoverBlob, parseAppleMusicLink, getCountry, setCountry } from '../itunes.js';
+import {
+  searchSongs, fetchCoverBlob, parseAppleMusicLink,
+  getCountry, setCountry, getScope, setScope, SCOPES,
+} from '../itunes.js';
 
 export async function enter(root, app) {
   clear(root);
   const project = app.state.project;
 
-  const results = h('div', { class: 'items' });
-  const status = h('div', {});
-  const clipBox = h('div', { class: 'stack' });
-  const manualBox = h('div', { class: 'stack', hidden: true });
+  // Everything below the search box lives in here, and is rebuilt as a whole.
+  const stage = h('div', { class: 'stack stack--wide' });
 
-  const continueButton = h('button', {
-    class: 'btn btn--primary btn--block',
-    type: 'button',
-    disabled: !project.song.title,
-    onclick: () => app.go('editor'),
-  }, 'Open the editor');
+  let results = [];
+  let artistName = null;
+  let notice = '';
+  let searching = false;
+  let runId = 0;
+  let timer = null;
 
   const input = h('input', {
     class: 'input',
     type: 'search',
     enterkeyhint: 'search',
-    placeholder: 'Song and artist, or an Apple Music link',
+    placeholder: 'Song, artist, or an Apple Music link',
     'aria-label': 'Search for a song',
     value: app.state.lastQuery || '',
   });
 
-  let runId = 0;
-  let timer = null;
+  const scopeChoices = segmented(
+    SCOPES.map(item => ({ value: item.id, label: item.label })),
+    getScope(),
+    value => {
+      setScope(value);
+      scopeChoices.select(value);
+      if (input.value.trim()) search();
+    },
+    'What to match',
+  );
 
-  const search = async () => {
+  async function search() {
     const term = input.value.trim();
     app.state.lastQuery = term;
     const mine = ++runId;
 
     if (!term) {
-      clear(results);
-      clear(status);
+      results = [];
+      artistName = null;
+      notice = '';
+      searching = false;
+      paint();
       return;
     }
 
-    clear(results);
-    clear(status).append(h('div', { class: 'developing' }));
+    searching = true;
+    paint();
 
     try {
       const found = await searchSongs(term);
       if (mine !== runId) return;
-      clear(status);
-      if (found.length === 0) {
-        results.append(emptyState(
-          parseAppleMusicLink(term)
-            ? 'That link did not lead anywhere. Try the song name instead.'
-            : 'Nothing came back for that. Try the artist name too.'));
-        return;
-      }
-      for (const song of found) results.append(resultRow(song, app, refresh));
+      results = found.songs;
+      artistName = found.artistName;
+      notice = found.fellBack
+        ? `The ${getCountry()} store had nothing, so this is the US store.`
+        : '';
     } catch (error) {
       if (mine !== runId) return;
-      clear(status);
-      results.append(emptyState(error.message === 'offline'
+      results = [];
+      artistName = null;
+      notice = error.message === 'offline'
         ? 'No connection. Song search needs one; everything else works offline.'
-        : 'Something didn\'t come through. Try once more.'));
+        : 'Something didn\'t come through. Try once more.';
+    } finally {
+      if (mine === runId) {
+        searching = false;
+        paint();
+      }
     }
-  };
+  }
 
   input.addEventListener('input', () => {
     clearTimeout(timer);
+    // Typing means you are looking again, so put the results back.
+    if (project.song.title && input.value.trim() !== songLine(project.song)) {
+      app.state.browsing = true;
+    }
     timer = setTimeout(search, 350);
   });
   input.addEventListener('search', search);
 
-  function refresh() {
-    // Mark the chosen row and rebuild the clip picker underneath.
-    for (const row of results.querySelectorAll('.item')) {
-      row.classList.toggle('is-selected', row.dataset.songId === project.song.id);
+  // --- the two states ------------------------------------------------------
+
+  function paint() {
+    clear(stage);
+    const chosen = project.song.title && !app.state.browsing;
+    if (chosen) paintChosen(stage, app, { onSearchAgain: () => { app.state.browsing = true; paint(); } });
+    else paintChoosing(stage, app, { results, artistName, notice, searching, onPick: pick });
+    paintSettings(stage, app, search);
+  }
+
+  async function pick(song) {
+    app.state.browsing = false;
+    project.song = {
+      id: song.id,
+      title: song.title,
+      artist: song.artist,
+      album: song.album,
+      year: song.year,
+      durationMs: song.durationMs,
+      version: song.version,
+      artworkUrl: song.artworkUrl,
+      artworkUrl100: song.artworkUrl100,
+      clipStartSeconds: 0,
+    };
+    input.value = songLine(song);
+    app.state.lastQuery = input.value;
+    paint();
+
+    const blob = await fetchCoverBlob(song);
+    if (blob) {
+      await app.setCover(blob);
+    } else {
+      app.state.media.cover = null;
+      toast('The cover didn\'t come through. The rest still works.');
     }
-    continueButton.disabled = !project.song.title;
-    buildClipPicker(clipBox, app);
+    app.save();
   }
 
   root.append(
     h('div', { class: 'stack stack--wide develops', style: { paddingTop: '10px' } },
-
       titleCard('The song'),
-
-      h('div', { class: 'search' },
-        icon('magnifying-glass', { size: 'sm' }),
-        input,
+      h('div', { class: 'stack', style: { gap: '4px' } },
+        h('div', { class: 'search' }, icon('magnifying-glass', { size: 'sm' }), input),
+        scopeChoices,
       ),
+      stage,
+    ),
+  );
 
-      status,
-      results,
-      clipBox,
+  if (app.state.browsing === undefined) app.state.browsing = !project.song.title;
+  paint();
+  if (app.state.browsing && input.value.trim() && results.length === 0) search();
+}
 
+function songLine(song) {
+  return [song.title, song.artist].filter(Boolean).join(' ');
+}
+
+// ---------------------------------------------------------------------------
+// Choosing
+// ---------------------------------------------------------------------------
+
+function paintChoosing(stage, app, { results, artistName, notice, searching, onPick }) {
+  // In artist mode the heading names whose catalogue this is, because the
+  // performer found may not be the one you had in mind.
+  const reading = searching ? ''
+    : artistName ? artistName
+    : results.length ? `${String(results.length).padStart(2, '0')} found`
+    : '';
+  const head = bottle('Results', reading);
+  stage.append(h('div', { class: 'stack', style: { gap: '10px' } },
+    head,
+    searching ? h('div', { class: 'developing' }) : null,
+    notice ? h('p', { class: 'body body--tight' }, notice) : null,
+    buildResults(results, searching, app, onPick),
+  ));
+}
+
+function buildResults(results, searching, app, onPick) {
+  if (results.length === 0) {
+    if (searching) return h('div');
+    const term = (app.state.lastQuery || '').trim();
+    if (!term) {
+      return emptyState('Type a song or an artist. Korean and any other script work fine.');
+    }
+    if (parseAppleMusicLink(term)) {
+      return emptyState('That link did not lead anywhere. Try the song name instead.');
+    }
+    return emptyState(getScope() === 'artist'
+      ? 'No performer by that name. Try Everything instead.'
+      : 'Nothing came back for that. If it is a performer, try By artist.');
+  }
+
+  const list = h('div', { class: 'items' });
+  for (const song of results) list.append(resultRow(song, onPick));
+  return list;
+}
+
+function resultRow(song, onPick) {
+  return h('button', { class: 'item', type: 'button', onclick: () => onPick(song) },
+    h('img', {
+      class: 'item__frame',
+      src: song.artworkUrl100,
+      alt: '',
+      loading: 'lazy',
+      crossorigin: 'anonymous',
+    }),
+    h('span', { class: 'item__main' },
+      h('span', { class: 'item__title' }, song.title),
+      h('span', { class: 'item__sub' },
+        [song.artist, song.album, song.year].filter(Boolean).join('  /  ')),
+    ),
+    h('span', { class: 'item__value item__value--stack' },
+      h('span', {}, formatTime(song.durationMs / 1000)),
+      h('span', { class: 'tag' }, song.version),
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Chosen
+// ---------------------------------------------------------------------------
+
+function paintChosen(stage, app, { onSearchAgain }) {
+  const project = app.state.project;
+  const song = project.song;
+  const total = Math.max(1, Math.round((song.durationMs || 0) / 1000));
+
+  const clipReading = bottle('Clip start',
+    `${formatTime(song.clipStartSeconds)} / ${formatTime(total)}`);
+
+  stage.append(
+    h('div', { class: 'stack', style: { gap: '10px' } },
+      bottle('Chosen', song.durationMs ? formatTime(song.durationMs / 1000) : null),
+      h('div', { class: 'items' },
+        h('div', { class: 'item', style: { cursor: 'default' } },
+          h('img', { class: 'item__frame', src: song.artworkUrl100, alt: '', crossorigin: 'anonymous' }),
+          h('span', { class: 'item__main' },
+            h('span', { class: 'item__title' }, song.title),
+            h('span', { class: 'item__sub' },
+              [song.artist, song.album, song.year].filter(Boolean).join('  /  ')),
+          ),
+          song.version ? h('span', { class: 'tag' }, song.version) : null,
+        ),
+      ),
+      h('button', {
+        class: 'btn btn--bare btn--block',
+        type: 'button',
+        onclick: onSearchAgain,
+      }, icon('magnifying-glass', { size: 'sm' }), 'Search again'),
+    ),
+
+    h('div', { class: 'stack', style: { gap: '6px' } },
+      clipReading,
+      sliderRow({
+        label: 'Starts at',
+        min: 0,
+        max: Math.max(1, total - 1),
+        step: 1,
+        value: Math.min(song.clipStartSeconds, total - 1),
+        format: value => formatTime(value),
+        onInput: value => {
+          song.clipStartSeconds = value;
+          const reading = clipReading.querySelector('.bottle__value');
+          if (reading) reading.textContent = `${formatTime(value)} / ${formatTime(total)}`;
+          app.save();
+        },
+      }),
+      h('p', { class: 'body body--tight' },
+        'Set this where you start the clip in Instagram, so the time on the ' +
+        'slide matches the music.'),
+    ),
+
+    h('button', {
+      class: 'btn btn--primary btn--block',
+      type: 'button',
+      onclick: () => app.go('editor'),
+    }, 'Open the editor'),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The settings that sit at the bottom of both states
+// ---------------------------------------------------------------------------
+
+function paintSettings(stage, app, search) {
+  const manual = h('div', { class: 'stack', hidden: true });
+
+  stage.append(
+    h('div', { class: 'stack', style: { gap: '8px' } },
+      bottle('Not listed'),
       h('button', {
         class: 'btn btn--bare btn--block',
         type: 'button',
         onclick: () => {
-          manualBox.hidden = !manualBox.hidden;
-          if (!manualBox.hidden) buildManualForm(manualBox, app, refresh);
+          manual.hidden = !manual.hidden;
+          if (!manual.hidden) buildManualForm(manual, app);
         },
-      }, 'Not listed? Type it in'),
+      }, 'Type the details in yourself'),
+      manual,
+    ),
 
-      manualBox,
-      continueButton,
-
+    h('div', { class: 'stack', style: { gap: '8px' } },
+      bottle('Store', getCountry()),
       h('div', { class: 'field' },
         h('label', { for: 'store-country' },
-          'Store country. Change this if a song is missing from your catalogue.'),
+          'Two-letter country code. Korea has no songs in this catalogue, ' +
+          'only videos, so searches there fall back to the US store.'),
         h('input', {
           class: 'input',
           id: 'store-country',
@@ -133,105 +330,11 @@ export async function enter(root, app) {
       ),
     ),
   );
-
-  refresh();
-  if (input.value.trim() && results.children.length === 0) search();
 }
 
-// ---------------------------------------------------------------------------
-
-function resultRow(song, app, refresh) {
-  const project = app.state.project;
-  const row = h('button', {
-    class: 'item',
-    type: 'button',
-    onclick: async () => {
-      await chooseSong(app, song);
-      refresh();
-    },
-  },
-    h('img', {
-      class: 'item__frame',
-      src: song.artworkUrl100,
-      alt: '',
-      loading: 'lazy',
-      crossorigin: 'anonymous',
-    }),
-    h('span', { class: 'item__main' },
-      h('span', { class: 'item__title' }, song.title),
-      h('span', { class: 'item__sub' },
-        [song.artist, song.album, song.year].filter(Boolean).join('  ')),
-    ),
-    h('span', { class: 'item__value' }, formatTime(song.durationMs / 1000)),
-  );
-  row.dataset.songId = song.id;
-  if (song.id === project.song.id) row.classList.add('is-selected');
-  return row;
-}
-
-async function chooseSong(app, song) {
-  const project = app.state.project;
-  project.song = {
-    id: song.id,
-    title: song.title,
-    artist: song.artist,
-    album: song.album,
-    year: song.year,
-    durationMs: song.durationMs,
-    version: song.version,
-    artworkUrl: song.artworkUrl,
-    artworkUrl100: song.artworkUrl100,
-    clipStartSeconds: 0,
-  };
-
-  const blob = await fetchCoverBlob(song);
-  if (blob) {
-    await app.setCover(blob);
-  } else {
-    app.state.media.cover = null;
-    toast('The cover didn\'t come through. The rest still works.');
-  }
-  app.save();
-}
-
-// ---------------------------------------------------------------------------
-
-function buildClipPicker(box, app) {
+function buildManualForm(box, app) {
   clear(box);
-  const project = app.state.project;
-  const song = project.song;
-  if (!song.title) return;
-
-  const total = Math.max(1, Math.round((song.durationMs || 0) / 1000));
-
-  box.append(
-    bottle('Clip start', `${formatTime(song.clipStartSeconds)} / ${formatTime(total)}`),
-    h('p', { class: 'body body--tight' },
-      'Set this where you start the clip in Instagram, so the time on the ' +
-      'slide matches the music.'),
-    sliderRow({
-      label: 'Starts at',
-      min: 0,
-      max: Math.max(1, total - 1),
-      step: 1,
-      value: Math.min(song.clipStartSeconds, total - 1),
-      format: value => `${formatTime(value)} of ${formatTime(total)}`,
-      onInput: value => {
-        song.clipStartSeconds = value;
-        const reading = box.querySelector('.bottle__value');
-        if (reading) reading.textContent = `${formatTime(value)} / ${formatTime(total)}`;
-        app.save();
-      },
-    }),
-  );
-}
-
-// ---------------------------------------------------------------------------
-
-function buildManualForm(box, app, refresh) {
-  clear(box);
-  const project = app.state.project;
-  const song = project.song;
+  const song = app.state.project.song;
 
   const title = h('input', { class: 'input', value: song.title, placeholder: 'Song title' });
   const artist = h('input', { class: 'input', value: song.artist, placeholder: 'Artist' });
@@ -264,7 +367,7 @@ function buildManualForm(box, app, refresh) {
         minutes, h('span', { class: 'mono' }, ':'), seconds),
     ),
     h('button', {
-      class: 'btn btn--block', type: 'button', onclick: () => coverInput.click(),
+      class: 'btn btn--bare btn--block', type: 'button', onclick: () => coverInput.click(),
     }, icon('image', { size: 'sm' }), 'Add your own cover'),
     coverInput,
     h('button', {
@@ -283,9 +386,10 @@ function buildManualForm(box, app, refresh) {
         song.version = '';
         song.durationMs = (Number(minutes.value) * 60 + Number(seconds.value)) * 1000;
         song.clipStartSeconds = 0;
+        app.state.browsing = false;
         app.save();
-        refresh();
         toast('Saved to this slide.');
+        app.go('song');
       },
     }, icon('check', { size: 'sm' }), 'Use these details'),
   );
