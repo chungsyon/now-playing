@@ -4,119 +4,219 @@ A phone-first web app that makes the **second slide** of an Instagram carousel:
 a silent, looping "now playing" animation, so viewers notice that a song is
 attached to the post.
 
-- **Slide 1** is your photo. This app never touches it.
-- **Slide 2** is an MP4 made here — same aspect ratio, no audio track.
-- The real song is added afterwards in Instagram's own music picker.
+- **Slide 1** is your photo. This app never opens, edits or re-saves it.
+- **Slide 2** is an MP4 made here, the same shape as slide 1, with no audio track.
+- The real song is added afterwards, in Instagram's own music picker.
 
 Plain HTML, CSS and JavaScript. No build step, no npm needed to run it, no
-backend. Your photos never leave the phone.
+backend, no accounts. Your photos never leave the phone. The only thing that
+touches the network is the song search.
 
----
-
-## Status
-
-**Phase 0 — export spike.** Only `spike/export-test.html` exists so far. It
-proves the hard part works before any app is built around it.
+**Live:** <https://chungsyon.github.io/now-playing/>
 
 ---
 
 ## Running it locally
 
-Any static file server will do. From the project folder:
+Any static file server. From this folder:
 
 ```sh
 python3 -m http.server 8777
 ```
 
-Then open <http://localhost:8777/spike/export-test.html>.
+Then open <http://localhost:8777/>.
 
-`localhost` counts as a secure context, so WebCodecs works there. **A plain
-local-network address like `http://192.168.1.20:8777` does not** — the browser
-blocks WebCodecs on it. That is why phone testing needs GitHub Pages (below).
-
----
-
-## Putting it on your iPhone (GitHub Pages)
-
-Do this once. After that, every `git push` updates the phone.
-
-1. **Create the repo on GitHub.** In this folder:
-
-   ```sh
-   gh repo create now-playing --public --source=. --remote=origin --push
-   ```
-
-   (Or make an empty repo on github.com, then
-   `git remote add origin https://github.com/<you>/now-playing.git && git push -u origin main`.)
-
-2. **Turn on Pages.** On github.com go to the repo → **Settings** →
-   **Pages** → under *Build and deployment* set **Source: Deploy from a
-   branch**, **Branch: `main`**, folder **`/ (root)`** → **Save**.
-
-3. **Wait about a minute.** The repo's **Actions** tab shows a "pages build and
-   deployment" job. When it is green the site is live at:
-
-   ```
-   https://<your-github-username>.github.io/now-playing/
-   ```
-
-4. **Open the spike on your iPhone:**
-
-   ```
-   https://<your-github-username>.github.io/now-playing/spike/export-test.html
-   ```
-
-All paths in this project are relative, so the app works from that
-sub-folder URL without any extra configuration.
-
-### What to check on the phone
-
-1. The page lists **what this device supports**. On iOS 17+ everything should
-   be ticked.
-2. Tap **Render 8-second loop**. The progress bar fills; it takes a few seconds.
-3. Tap **Save video** → the iOS share sheet opens → choose **Save Video**.
-4. In Photos: does it loop cleanly with no visible jump? Is it silent?
-5. In Instagram: make a carousel, add any photo first, then this video, then
-   add music. Does it accept the video as a second slide?
-
-Add `?fallback=1` to the URL to force the MediaRecorder path instead, if you
-want to compare.
+`localhost` counts as a secure context, so the video encoder works there. **A
+local network address like `http://192.168.1.20:8777` does not** - the browser
+blocks WebCodecs on it. That is why phone testing goes through GitHub Pages.
 
 ---
 
-## Decisions made in Phase 0
+## Deploying
+
+The site is already published from the `main` branch of
+<https://github.com/chungsyon/now-playing>. Every `git push` updates it:
+
+```sh
+git add -A && git commit -m "what changed" && git push
+```
+
+Give it about a minute. The repo's **Actions** tab shows a "pages build and
+deployment" job; when it is green the new version is live.
+
+If you ever need to set this up again from scratch: repo → **Settings** →
+**Pages** → *Source: Deploy from a branch*, *Branch: `main`*, folder `/ (root)`.
+
+All paths in this project are relative, so the app works from a sub-folder URL
+without any extra configuration.
+
+---
+
+## Installing it on your iPhone
+
+1. Open <https://chungsyon.github.io/now-playing/> in Safari.
+2. Tap the share button, then **Add to Home Screen**.
+3. Open it from the Home Screen. It runs full screen, with no Safari chrome.
+
+### Making sure the phone gets a new version
+
+The app keeps a copy of itself on the device so it opens with no signal, which
+means a push does not always reach the phone immediately.
+
+**When you change any file in `js/`, `css/`, `index.html` or `assets/`, raise
+`VERSION` at the top of `sw.js` by one before you push.** That is the switch
+that tells every phone to throw away its copy and fetch the new one.
+
+```js
+const VERSION = 2;   // was 1
+```
+
+If you forget, the phone will show the old version once more and pick up the
+new one on the following launch. To force it immediately: swipe the app away in
+the app switcher and open it again.
+
+---
+
+## How it works
+
+### The four screens
+
+| Screen | What it is for |
+|---|---|
+| **Home** | Start with a photo, choose the slide shape, reopen a draft or a saved style. |
+| **Song** | Search the iTunes catalogue, or type the details yourself. Set where your Instagram clip starts. |
+| **Editor** | Preview at the top, loop bar under it, and a sheet of controls: Layers, Effects, Animation, Song. |
+| **Export** | Both slides side by side, what the file is, and two taps to get it into Photos. |
+
+### The files
+
+```
+index.html              the shell: the room light, the grain, one <main>
+css/app.css             every colour, size and easing curve, in one place
+js/app.js               holds the project, moves between screens, saves
+js/model.js             the document model, valueAt, the templates
+js/render.js            the one render function, plus the WebGL effect runner
+js/effects.js           the effect registry: one entry per effect
+js/color.js             pulling colours out of an image (median cut)
+js/gestures.js          drag, pinch, twist
+js/db.js                IndexedDB: drafts and styles
+js/itunes.js            song search
+js/export.js            frames to a silent MP4
+js/ui.js                small helpers shared by the screens
+js/screens/*.js         one file per screen
+sw.js                   the offline copy. VERSION lives here
+```
+
+### The five things that were worth getting right early
+
+**1. A project is plain JSON.** `{ version, aspect, song, loopSeconds, template,
+layers: [...] }`, and each layer is `{ id, type, visible, locked, props, effects }`.
+You can print one to the console and read it.
+
+**2. Every number can become animated later.** A property is stored either as a
+plain value or as `{ keyframes: [...] }`, and everything reads it through one
+helper, `valueAt(prop, t)`. Version 1 only writes plain values, but a timeline
+editor can be added later without touching any drawing code.
+
+**3. One render function.** `render(stage, project, t)`. The preview and the
+export call the same one, at different sizes. All positions are stored as
+fractions of the slide rather than pixels, which is what makes that work: what
+you line up on a 343px preview is exactly what lands in a 1080px file.
+
+**4. An effect registry.** Adding an effect means adding one entry to
+`js/effects.js` with a name, its slider definitions and a fragment shader. The
+Effects panel builds its sliders from that entry; nothing else changes.
+
+**5. Local-first saving.** Drafts autosave to IndexedDB, photo and cover
+included. A style is the same project with the photo and song stripped out.
+
+---
+
+## Decisions, and why
 
 **Muxer: [Mediabunny](https://mediabunny.dev) 1.59.1**, vendored at
-`vendor/mediabunny-1.59.1.min.mjs` (MPL-2.0, licence in
-`vendor/mediabunny-LICENSE.txt`). Chosen over `mp4-muxer` because it ships a
-real single-file ES-module build, writes the `moov` index at the front of the
-file for us, and derives the H.264 decoder configuration from the encoder
-automatically. `mp4-muxer` is smaller but leaves more of that plumbing to hand.
+`vendor/mediabunny-1.59.1.min.mjs` (MPL-2.0, licence alongside it). Chosen over
+`mp4-muxer` because it ships a real single-file ES-module build, writes the
+index at the front of the file for us, and works out the H.264 decoder
+configuration from the encoder automatically.
 
-**Encoding: WebCodecs `VideoEncoder`, frame by frame.** The render loop draws
-frame *n*, hands it to the encoder, waits, then draws frame *n+1*. Nothing
-depends on wall-clock time, so the same input always produces the same file.
+**Rendering: hand-written WebGL, not PixiJS.** Pixi's ES-module build is about
+400KB of someone else's code, and you said you want to read every file. The
+three effects plus the future corner-pin are roughly 150 lines of shader you
+can actually follow. `CanvasRenderingContext2D.filter` is deliberately not used
+anywhere; it is unreliable in Safari.
 
-**Fallback: `MediaRecorder` on a canvas stream.** Real-time, so it is not
-frame-exact and comes out slightly short of 8 s. Only used when `VideoEncoder`
-is missing. The page always says which path it used.
+**Layers are drawn one at a time, then composited.** Each layer goes onto its
+own scratch canvas, runs through its own effect chain, and only then lands on
+the slide. That is what makes per-layer effects possible, and it is also what
+will make a true corner-pin possible later: a projective warp is just another
+pass in the same place.
 
-**No audio, structurally.** Only a video track is ever added to the output
-file, so an audio track cannot exist. Verified by reading the finished MP4 back:
-one `trak`, video handler, zero audio tracks.
+**No audio, structurally.** Only a video track is ever added to the output, so
+an audio track cannot exist. Verified by reading a finished file back: one
+track, video handler, zero audio tracks.
 
-**Seamless loop.** 8 s × 30 fps = 240 frames, and the record turns exactly
-4 whole times (30 rpm) across them. Frame 240 would be identical to frame 0, so
-the loop closes with no jump. Any loop length works as long as the turn count
-is a whole number.
+**Seamless loop.** The record turns a whole number of times over the loop, so
+the last frame lines up with the first. The requested speed is rounded to reach
+that, and the Animation tab shows the real speed rather than pretending it used
+the number you set. Verified: rendering the slide at `t = 0` and at
+`t = loopSeconds` produces an identical frame.
 
-**Saving is its own button.** iOS only opens a share sheet in response to a
-fresh tap, and the permission expires while the long render is running. So
-rendering and saving are two separate taps.
+*Side effect worth knowing:* at the default 30 rpm over 8 seconds the record
+turns 4 times, so the picture actually repeats every 2 seconds. The loop is
+still correct, it just contains four identical turns. Only the progress bar
+cares about the full loop length.
+
+**The progress bar dissolves rather than snaps.** At the loop point the bar has
+to go back to where it started. Instead of jumping, the ending state
+cross-fades into the starting state over the last third of a second, so the
+reset reads as a soft cut. The track line itself stays solid throughout, so
+nothing flickers.
+
+**Saving is a separate button from rendering.** iOS only opens the share sheet
+in answer to a real tap, and that permission has already expired by the time a
+long render finishes.
+
+**Song search needs no fallback in practice.** The iTunes Search API and the
+artwork CDN both send `Access-Control-Allow-Origin: *`, so a normal fetch works
+and covers load without spoiling the canvas. The JSONP path in `js/itunes.js`
+is kept in case that ever changes.
+
+**Dark only.** The whole idea is a darkroom, and a light mode would be a lit
+one. This is the one place the app ignores `prefers-color-scheme` on purpose.
+It does respect `prefers-reduced-motion`: movement becomes a plain fade, and
+the editor preview starts paused.
+
+---
+
+## What is vendored
+
+| What | Version | Licence |
+|---|---|---|
+| Mediabunny (MP4 muxer) | 1.59.1 | MPL-2.0, `vendor/mediabunny-LICENSE.txt` |
+| Phosphor Icons (29 glyphs) | regular weight | MIT, `assets/phosphor-LICENSE.txt` |
+| Instrument Serif | latin subset | SIL Open Font License 1.1 |
+| DM Sans | latin subset | SIL Open Font License 1.1 |
+| JetBrains Mono | latin subset | SIL Open Font License 1.1 |
+
+No album art or photographs are committed to this repo, and `.gitignore` is set
+up to keep it that way.
+
+---
+
+## Not in this version
+
+Corner-pin onto surfaces in a photo, CD and cassette templates, a keyframe
+timeline, the longer effect list, a desktop layout, Android testing. The
+architecture is built expecting all of them.
 
 ---
 
 ## Changelog
 
-- **0.1.0** — Phase 0: export spike (`spike/export-test.html`). Spinning record
-  rendered frame by frame at 1080×1350 and encoded to a silent H.264 MP4.
+- **0.2.0** - The first real version. Four screens, two templates (Vinyl and
+  Player), layers with drag, pinch and twist, three effects, colour extraction,
+  drafts and styles in IndexedDB, song search, silent MP4 export, offline
+  support and Home Screen install.
+- **0.1.0** - Export spike (`spike/export-test.html`): proved a spinning record
+  could be rendered frame by frame and encoded to a silent H.264 MP4.

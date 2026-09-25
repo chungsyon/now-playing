@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover lets the layout reach under the notch and the home bar -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Now Playing</title>
+<meta name="description" content="Make the second Instagram slide: a silent looping animation that shows a song is attached.">
+<meta name="theme-color" content="#141312">
+
+<!-- Running from the Home Screen on an iPhone -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Now Playing">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icons/icon-192.png" type="image/png">
+
+<!-- The two faces that appear straight away, so the first screen does not reflow -->
+<link rel="preload" href="assets/fonts/instrument-serif-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/dm-sans-var.woff2" as="font" type="font/woff2" crossorigin>
+
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- The room: a soft light from overhead and a faint grain over everything.
+     Both are fixed and untouchable, so they never get in the way of a tap. -->
+<div class="room-light" aria-hidden="true"></div>
+<div class="room-grain" aria-hidden="true"></div>
+
+<div id="app">
+  <header class="topbar" id="topbar" hidden></header>
+  <main class="screen is-active" id="screen"></main>
+</div>
+
+<noscript>
+  <p style="padding:24px;color:#F3EFE9;font-family:system-ui">
+    This app builds the slide in your browser, so it needs JavaScript switched on.
+  </p>
+</noscript>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

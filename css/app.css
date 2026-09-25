@@ -1,0 +1,749 @@
+/* ===========================================================================
+   NOW PLAYING - the look
+   ---------------------------------------------------------------------------
+   A darkroom with the safelight on. Warm near-black, one amber light, a faint
+   grain over everything, and type that stays small so the photo can be big.
+
+   The app is dark only, on purpose. A light mode would be a lit darkroom, and
+   the whole idea is that the darkness is where the good part happens.
+   =========================================================================== */
+
+/* --- Fonts ---------------------------------------------------------------
+   Vendored, so the app still looks right with no signal. Each one has a real
+   fallback stack in case a file ever fails to load. */
+
+@font-face {
+  font-family: 'Instrument Serif';
+  src: url('../assets/fonts/instrument-serif-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  src: url('../assets/fonts/instrument-serif-400-italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DM Sans';
+  src: url('../assets/fonts/dm-sans-var.woff2') format('woff2');
+  font-weight: 100 1000;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../assets/fonts/jetbrains-mono-var.woff2') format('woff2');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* --- Tokens ------------------------------------------------------------- */
+
+:root {
+  /* The room */
+  --room: #141312;
+  --room-deep: #0E0D0C;
+  --surface: #1E1C1A;
+  --surface-raised: #2A2724;
+  --hairline: #3A3632;
+
+  /* Light */
+  --print: #F3EFE9;
+  --muted: #A8A097;
+  --safelight: #F2A65A;
+  --on-safelight: #1A1410;
+  --warning: #E08A6B;
+
+  /* Type */
+  --serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --sans: 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* One radius system: small controls, everything else, and the big surfaces.
+     Nothing on screen uses a radius outside these three. */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 22px;
+
+  /* Motion. Ease-out only: things settle, they never overshoot. */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-quick: 180ms;
+  --t-ui: 300ms;
+  --t-screen: 380ms;
+  --t-develop: 1100ms;
+
+  /* Layers, all of them, in one place. */
+  --z-sheet: 20;
+  --z-topbar: 30;
+  --z-toast: 40;
+  --z-light: 50;
+  --z-grain: 60;
+
+  --tap: 44px;
+
+  color-scheme: dark;
+}
+
+/* --- Reset -------------------------------------------------------------- */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--room);
+  color: var(--print);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+img { max-width: 100%; display: block; }
+[hidden] { display: none !important; }
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--safelight);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* --- The room itself: safelight and grain ------------------------------- */
+
+/* A soft warm light from overhead, falling off toward the corners. Not a
+   visible gradient band, just enough that the screen has a direction. */
+.room-light {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-light);
+  pointer-events: none;
+  background:
+    radial-gradient(120% 62% at 50% -12%, rgba(242, 166, 90, 0.085), transparent 62%),
+    radial-gradient(150% 95% at 50% 42%, transparent 52%, rgba(6, 4, 3, 0.55) 100%);
+}
+
+/* Film grain. Static, faint, and fixed to the viewport so it never repaints
+   while anything scrolls. */
+.room-grain {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-grain);
+  pointer-events: none;
+  opacity: 0.045;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/* --- Type --------------------------------------------------------------- */
+
+.title {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(30px, 8.5vw, 40px);
+  /* Room for the descenders on g, y and p at this size. */
+  line-height: 1.12;
+  letter-spacing: 0.01em;
+  margin: 0;
+  padding-bottom: 2px;
+}
+
+.title--sm { font-size: clamp(22px, 6vw, 27px); }
+
+/* The darkroom label: small, spaced, quiet. Used for the name of a group of
+   controls, never as decoration above a heading. */
+.label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  margin: 0;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+.body { color: var(--muted); font-size: 14px; margin: 0; max-width: 46ch; }
+
+/* --- App frame ---------------------------------------------------------- */
+
+#app {
+  /* 100dvh, not 100vh: the iPhone address bar changes the height and dvh
+     follows it, so nothing jumps as the bar hides. */
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.topbar {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: var(--z-topbar);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 60px;
+  padding: 0 8px;
+  background: linear-gradient(to bottom, var(--room) 62%, transparent);
+}
+
+.topbar__title {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--serif);
+  font-size: 20px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.screen {
+  flex: 1;
+  min-height: 0;
+  display: none;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 20px calc(28px + env(safe-area-inset-bottom, 0px));
+}
+.screen.is-active { display: flex; }
+
+/* The editor does not scroll as a whole. The preview takes whatever height is
+   left over, and the sheet does its own scrolling underneath. */
+.screen--editor {
+  overflow: hidden;
+  padding-bottom: 0;
+}
+.editor-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 0 10px;
+}
+
+/* Screen changes are cuts, not slides. */
+.screen.is-entering { animation: fade-up var(--t-screen) var(--ease) both; }
+
+@keyframes fade-up {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.stack { display: flex; flex-direction: column; gap: 14px; }
+.stack--wide { gap: 24px; }
+.grow { flex: 1; }
+
+/* --- Develop: the way things arrive ------------------------------------
+   Content fades up while a dark sheet over it fades away, so it brightens
+   into place like a print in the tray. Both halves are opacity, so this
+   stays cheap on a phone. */
+
+.develops { position: relative; animation: fade-up var(--t-develop) var(--ease) both; }
+.develops::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: var(--room-deep);
+  animation: develop-clear var(--t-develop) var(--ease) both;
+}
+@keyframes develop-clear {
+  from { opacity: 0.92; }
+  to { opacity: 0; }
+}
+
+/* --- Buttons ------------------------------------------------------------ */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: var(--tap);
+  padding: 11px 18px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface-raised);
+  color: var(--print);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--t-quick) var(--ease), transform var(--t-quick) var(--ease);
+}
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+
+.btn--primary {
+  background: var(--safelight);
+  border-color: var(--safelight);
+  color: var(--on-safelight);
+  font-weight: 500;
+}
+.btn--primary:active { background: #E59A50; }
+
+.btn--quiet { background: transparent; }
+
+.btn--block { width: 100%; }
+
+.btn--icon {
+  width: var(--tap);
+  min-width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--print);
+}
+.btn--icon:active { background: var(--surface); }
+
+.icon { width: 22px; height: 22px; flex: none; fill: currentColor; }
+.icon--sm { width: 18px; height: 18px; }
+
+/* --- Inputs ------------------------------------------------------------- */
+
+.field { display: flex; flex-direction: column; gap: 8px; }
+
+.field > label { font-size: 13px; color: var(--muted); }
+
+.input {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 11px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--print);
+  -webkit-appearance: none;
+}
+/* Contrast checked: #8E867D on #1E1C1A is 4.6:1. */
+.input::placeholder { color: #8E867D; }
+.input:focus { border-color: var(--safelight); outline: none; }
+
+.field__hint { font-size: 12px; color: var(--muted); }
+.field__error { font-size: 12px; color: var(--warning); }
+
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search .icon {
+  position: absolute;
+  left: 13px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.search .input { padding-left: 44px; }
+
+/* --- Sliders ------------------------------------------------------------
+   The fill left of the thumb is the safelight. The percentage is written to
+   --fill by JavaScript whenever the value changes. */
+
+.slider {
+  --fill: 50%;
+  width: 100%;
+  height: var(--tap);
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+.slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(to right,
+    var(--safelight) 0 var(--fill), rgba(243, 239, 233, 0.16) var(--fill) 100%);
+}
+.slider::-moz-range-track {
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(to right,
+    var(--safelight) 0 var(--fill), rgba(243, 239, 233, 0.16) var(--fill) 100%);
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -7.5px;
+  border-radius: 999px;
+  background: var(--print);
+  border: none;
+}
+.slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 999px;
+  background: var(--print);
+}
+
+.slider-row { display: flex; flex-direction: column; gap: 2px; }
+.slider-row__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.slider-row__head span:first-child { font-size: 13px; color: var(--muted); }
+
+/* --- Segmented choices (ratio, background, template) -------------------- */
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.segmented::-webkit-scrollbar { display: none; }
+
+.segmented button {
+  flex: 1 0 auto;
+  min-height: 38px;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--t-quick) var(--ease), background var(--t-quick) var(--ease);
+}
+.segmented button[aria-pressed='true'] {
+  background: var(--surface-raised);
+  border-color: var(--hairline);
+  color: var(--print);
+}
+
+/* Colour swatches. Same frame as a segmented row, but the button IS the
+   colour, so the pressed state has to be a ring rather than a fill. */
+.swatches {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.swatches::-webkit-scrollbar { display: none; }
+.swatches button {
+  flex: 1 0 46px;
+  min-height: 38px;
+  border: 2px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(8, 5, 3, 0.4);
+}
+.swatches button[aria-pressed='true'] {
+  border-color: var(--safelight);
+}
+
+/* --- Lists -------------------------------------------------------------- */
+
+.rows { display: flex; flex-direction: column; gap: 8px; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  color: var(--print);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--t-quick) var(--ease);
+}
+.row.is-selected { border-color: var(--safelight); }
+.row__main { flex: 1; min-width: 0; }
+.row__title {
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row__sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.row__art {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: var(--surface-raised);
+  object-fit: cover;
+}
+.row__actions { display: flex; gap: 2px; flex: none; }
+
+.tag {
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-sm);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* --- Empty and loading -------------------------------------------------- */
+
+.empty {
+  padding: 26px 18px;
+  border: 1px dashed var(--hairline);
+  border-radius: var(--r-md);
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Developing, not waiting: a band of safelight moving across a dark strip. */
+.developing {
+  position: relative;
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(243, 239, 233, 0.1);
+  overflow: hidden;
+}
+.developing::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 38%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--safelight), transparent);
+  animation: sweep 1.6s var(--ease) infinite;
+}
+@keyframes sweep {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(360%); }
+}
+
+.progress {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(243, 239, 233, 0.1);
+  overflow: hidden;
+}
+.progress__fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: var(--safelight);
+  transition: width 220ms linear;
+}
+
+/* --- The preview -------------------------------------------------------- */
+
+.stagewrap {
+  position: relative;
+  /* The exact size is set in JavaScript, from the space actually left over. */
+  margin: 0 auto;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--room-deep);
+  box-shadow: 0 26px 60px rgba(8, 5, 3, 0.5);
+  touch-action: none;
+}
+.stagewrap canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.stagewrap__overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.loopbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 4px;
+}
+.loopbar .mono { color: var(--muted); flex: none; }
+.loopbar .progress { flex: 1; }
+
+/* --- Bottom sheet ------------------------------------------------------- */
+
+.sheet {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sheet);
+  margin: 14px -20px 0;
+  border-top: 1px solid var(--hairline);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  background: var(--room);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.sheet__tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 12px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.sheet__tab {
+  flex: 1;
+  min-height: var(--tap);
+  padding: 10px 4px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease);
+}
+.sheet__tab[aria-selected='true'] {
+  color: var(--print);
+  border-bottom-color: var(--safelight);
+}
+
+.sheet__body {
+  padding: 16px 20px 20px;
+  /* A fixed height, not a maximum: the preview is sized from what is left,
+     so the sheet must not change height when you switch tabs. */
+  height: clamp(180px, 32dvh, 300px);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* --- Export summary ----------------------------------------------------- */
+
+.slides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.slide-card {
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--room-deep);
+}
+.slide-card img,
+.slide-card canvas,
+.slide-card video {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: var(--room-deep);
+}
+.slide-card figcaption {
+  padding: 9px 11px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  font-size: 13.5px;
+}
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-family: var(--mono); font-size: 13px; }
+
+.checklist { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.checklist li {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 12px;
+  align-items: start;
+  font-size: 14px;
+}
+.checklist .step {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--safelight);
+  padding-top: 2px;
+}
+.checklist strong { font-weight: 500; }
+
+/* --- Toast -------------------------------------------------------------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-toast);
+  transform: translateX(-50%);
+  max-width: min(88vw, 420px);
+  padding: 12px 18px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-md);
+  background: var(--surface-raised);
+  font-size: 14px;
+  text-align: center;
+  box-shadow: 0 18px 40px rgba(6, 4, 3, 0.55);
+  animation: fade-up var(--t-ui) var(--ease) both;
+}
+
+/* --- Reduce motion -----------------------------------------------------
+   Movement is replaced by a plain fade. Nothing loops. */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+  .developing::after {
+    animation: none;
+    width: 100%;
+    background: var(--safelight);
+    opacity: 0.4;
+  }
+  .develops::after { display: none; }
+}
+
+/* --- Wider screens -----------------------------------------------------
+   Phones come first. On anything larger the column simply stops growing. */
+
+@media (min-width: 560px) {
+  .screen { max-width: 520px; width: 100%; margin: 0 auto; }
+  .sheet { margin-left: -20px; margin-right: -20px; }
+}
