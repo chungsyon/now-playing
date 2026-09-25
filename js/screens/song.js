@@ -31,6 +31,7 @@ export async function enter(root, app) {
 
   let results = [];
   let artistName = null;
+  let noMatch = false;
   let notice = '';
   let searching = false;
   let runId = 0;
@@ -64,6 +65,7 @@ export async function enter(root, app) {
     if (!term) {
       results = [];
       artistName = null;
+      noMatch = false;
       notice = '';
       searching = false;
       paint();
@@ -78,6 +80,7 @@ export async function enter(root, app) {
       if (mine !== runId) return;
       results = found.songs;
       artistName = found.artistName;
+      noMatch = found.noMatch;
       notice = found.fellBack
         ? `The ${getCountry()} store had nothing, so this is the US store.`
         : '';
@@ -85,6 +88,7 @@ export async function enter(root, app) {
       if (mine !== runId) return;
       results = [];
       artistName = null;
+      noMatch = false;
       notice = error.message === 'offline'
         ? 'No connection. Song search needs one; everything else works offline.'
         : 'Something didn\'t come through. Try once more.';
@@ -112,7 +116,7 @@ export async function enter(root, app) {
     clear(stage);
     const chosen = project.song.title && !app.state.browsing;
     if (chosen) paintChosen(stage, app, { onSearchAgain: () => { app.state.browsing = true; paint(); } });
-    else paintChoosing(stage, app, { results, artistName, notice, searching, onPick: pick });
+    else paintChoosing(stage, app, { results, artistName, noMatch, notice, searching, onPick: pick });
     paintSettings(stage, app, search);
   }
 
@@ -168,7 +172,7 @@ function songLine(song) {
 // Choosing
 // ---------------------------------------------------------------------------
 
-function paintChoosing(stage, app, { results, artistName, notice, searching, onPick }) {
+function paintChoosing(stage, app, { results, artistName, noMatch, notice, searching, onPick }) {
   // In artist mode the heading names whose catalogue this is, because the
   // performer found may not be the one you had in mind.
   const reading = searching ? ''
@@ -180,11 +184,11 @@ function paintChoosing(stage, app, { results, artistName, notice, searching, onP
     head,
     searching ? h('div', { class: 'developing' }) : null,
     notice ? h('p', { class: 'body body--tight' }, notice) : null,
-    buildResults(results, searching, app, onPick),
+    buildResults(results, searching, noMatch, app, onPick),
   ));
 }
 
-function buildResults(results, searching, app, onPick) {
+function buildResults(results, searching, noMatch, app, onPick) {
   if (results.length === 0) {
     if (searching) return h('div');
     const term = (app.state.lastQuery || '').trim();
@@ -193,6 +197,16 @@ function buildResults(results, searching, app, onPick) {
     }
     if (parseAppleMusicLink(term)) {
       return emptyState('That link did not lead anywhere. Try the song name instead.');
+    }
+    if (noMatch) {
+      // Apple did send something back, but none of it contained the words
+      // typed, so it was thrown away. Say what usually works instead.
+      return h('div', { class: 'stack', style: { gap: '10px' } },
+        emptyState(`Nothing on Apple matches ${term}.`),
+        h('p', { class: 'body body--tight' },
+          'Short words often match nothing at all. More of the title usually ' +
+          'finds it, or switch to By artist and use the performer\'s name.'),
+      );
     }
     return emptyState(getScope() === 'artist'
       ? 'No performer by that name. Try Everything instead.'

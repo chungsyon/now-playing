@@ -144,6 +144,73 @@ function normalise(track) {
 }
 
 // ---------------------------------------------------------------------------
+// Is a result actually about what you asked for?
+// ---------------------------------------------------------------------------
+
+/**
+ * Apple does not return an empty list when it cannot match your words. It
+ * returns popular songs instead. Type 작업 and back come Taylor Swift and
+ * Fleetwood Mac, with nothing to say they are filler.
+ *
+ * So every result is checked against the words you typed. Ones that genuinely
+ * contain them are floated to the top, and if not a single result contains any
+ * of them, the whole batch is filler and is thrown away.
+ */
+
+/** Lower case, and with spacing and punctuation taken out, so 너랑 나 matches 너랑나. */
+function flatten(text) {
+  return (text || '').toLowerCase().replace(/[\s\-_'".,()\[\]/&!?:;]+/g, '');
+}
+
+/** The words worth matching on. Single characters are too loose to count. */
+function queryTokens(term) {
+  return (term || '')
+    .toLowerCase()
+    .split(/[\s,./&\-_]+/)
+    .map(flatten)
+    .filter(token => token.length >= 2);
+}
+
+function matchesQuery(song, tokens) {
+  if (tokens.length === 0) return true;
+  const haystack = flatten(`${song.title} ${song.artist} ${song.album}`);
+  return tokens.some(token => haystack.includes(token));
+}
+
+/**
+ * The performer who accounts for the largest share of a batch.
+ *
+ * This is how a Korean artist name is told apart from a Korean word that
+ * matches nothing. Apple files 아이유 under "IU", so none of the results
+ * contain the letters typed, yet 84% of them are by the same performer. Type a
+ * word it cannot place and the batch scatters across twenty-three different
+ * artists. Measured: real artist searches come back at 0.63 to 0.92, filler at
+ * 0.08 to 0.15, so half is a safe line to draw.
+ */
+function dominantArtist(songs) {
+  const counts = new Map();
+  for (const song of songs) counts.set(song.artist, (counts.get(song.artist) || 0) + 1);
+  let artist = null;
+  let best = 0;
+  for (const [name, count] of counts) {
+    if (count > best) { best = count; artist = name; }
+  }
+  return { artist, share: songs.length ? best / songs.length : 0 };
+}
+
+/**
+ * Put the results that really contain your words first, and report how many
+ * there were. The order within each group is left exactly as Apple sent it.
+ */
+function rankByRelevance(songs, term) {
+  const tokens = queryTokens(term);
+  if (tokens.length === 0) return { songs, relevant: songs.length };
+  const hits = songs.filter(song => matchesQuery(song, tokens));
+  const rest = songs.filter(song => !matchesQuery(song, tokens));
+  return { songs: [...hits, ...rest], relevant: hits.length };
+}
+
+// ---------------------------------------------------------------------------
 // The two things the app asks for
 // ---------------------------------------------------------------------------
 
@@ -158,7 +225,10 @@ function normalise(track) {
  */
 export async function searchSongs(term, { scope = getScope() } = {}) {
   const trimmed = (term || '').trim();
-  const empty = { songs: [], artistName: null, searchedCountry: getCountry(), fellBack: false };
+  const empty = {
+    songs: [], artistName: null, noMatch: false,
+    searchedCountry: getCountry(), fellBack: false,
+  };
   if (!trimmed) return empty;
 
   const link = parseAppleMusicLink(trimmed);
@@ -187,10 +257,31 @@ export async function searchSongs(term, { scope = getScope() } = {}) {
 /** The ordinary search: the words go against everything at once. */
 async function runEverything(term, country) {
   const data = await request('/search', { term, entity: 'song', limit: 25, country });
-  const songs = (data.results || [])
+  const all = (data.results || [])
     .filter(r => r.trackId && r.trackTimeMillis)
     .map(normalise);
-  return { songs, artistName: null };
+
+  const { songs, relevant } = rankByRelevance(all, term);
+  if (relevant > 0) return { songs, artistName: null, noMatch: false };
+  if (all.length === 0) return { songs: [], artistName: null, noMatch: false };
+
+  // Nothing contains a word you typed. Apple may still have understood it as a
+  // performer it files under another spelling, so check whether the batch is
+  // really one artist before throwing it away.
+  const { artist, share } = dominantArtist(all);
+  if (artist && share >= 0.5) {
+    return {
+      songs: [
+        ...all.filter(song => song.artist === artist),
+        ...all.filter(song => song.artist !== artist),
+      ],
+      artistName: artist,
+      noMatch: false,
+    };
+  }
+
+  // A scatter of unrelated performers: this is Apple's filler, not an answer.
+  return { songs: [], artistName: null, noMatch: true };
 }
 
 /**
@@ -200,7 +291,7 @@ async function runEverything(term, country) {
 async function runByArtist(term, country) {
   const found = await request('/search', { term, entity: 'musicArtist', limit: 5, country });
   const artist = (found.results || []).find(a => a.artistId);
-  if (!artist) return { songs: [], artistName: null };
+  if (!artist) return { songs: [], artistName: null, noMatch: false };
 
   const data = await request('/lookup', {
     id: artist.artistId,
@@ -212,7 +303,9 @@ async function runByArtist(term, country) {
     // The first row that comes back is the artist, not a track.
     .filter(r => r.wrapperType === 'track' && r.trackId && r.trackTimeMillis)
     .map(normalise);
-  return { songs, artistName: artist.artistName || null };
+  // No relevance check here: this is a whole catalogue by one performer, and
+  // the heading names who that was, so a wrong guess is visible at a glance.
+  return { songs, artistName: artist.artistName || null, noMatch: false };
 }
 
 export async function lookupById(id) {

@@ -229,6 +229,23 @@ all** through this API, only music videos, which carry no length and so cannot
 drive the progress bar. Setting the store to KR therefore falls back to the US
 store automatically and says so on screen.
 
+**Apple returns filler rather than nothing, so results are checked.** When the
+API cannot match your words it does not send back an empty list. It sends
+popular songs. Typing 작업 returned Taylor Swift and Fleetwood Mac with nothing
+to mark them as padding, and the term returns no genuine match at any limit up
+to 200, in any of fourteen stores. So every result is now checked against the
+words typed: ones that really contain them float to the top, and if not one
+result in the batch contains any of them the whole batch is discarded and the
+screen says so.
+
+That check alone would have broken Korean artist names, because Apple files
+아이유 under "IU" and none of those results contain the letters typed. The way
+out is that a real artist match comes back as one performer's catalogue while
+filler scatters. Measured across both kinds: a genuine match runs 0.63 to 0.92
+of results by a single artist, filler 0.08 to 0.15. So a batch with no literal
+match survives if half or more of it is one performer, and the results heading
+then names them, which is also how you find out that 방탄소년단 was read as BTS.
+
 **Searching by artist is a different request, not a filter.** The API documents
 an `attribute` parameter (`artistTerm`, `songTerm`) that is supposed to narrow
 what the words match against. For music it is silently ignored: `artistTerm`,
@@ -276,6 +293,10 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.4.1** - Results are checked against what you typed. Apple answers an
+  unmatchable query with popular songs rather than with nothing, so a search
+  for 작업 came back full of Taylor Swift. Genuine matches now sort to the top
+  and a batch containing none is replaced by an explanation.
 - **0.4.0** - Search rebuilt. A **By artist** mode that finds the performer and
   lists their catalogue, an automatic fall back to the US store when the chosen
   one carries no songs, and a Song screen that shows either the results or the
