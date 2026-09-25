@@ -75,6 +75,12 @@ If you forget, the phone will show the old version once more and pick up the
 new one on the following launch. To force it immediately: swipe the app away in
 the app switcher and open it again.
 
+One more thing that catches people out: GitHub Pages tells browsers to hold on
+to files for **10 minutes** (`cache-control: max-age=600`). So even before the
+service worker gets involved, Safari may keep serving the old JavaScript for a
+few minutes after a push. If a change does not appear, it is almost always this
+rather than a broken deploy. Wait ten minutes, or test in a private tab.
+
 ---
 
 ## How it works
