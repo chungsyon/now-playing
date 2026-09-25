@@ -251,11 +251,12 @@ async function boot() {
   go('home');
   document.body.classList.add('is-ready');
 
+  // Registered straight away, not on the window's load event: this function
+  // waits for the icons and the fonts first, and by then load has usually
+  // already fired, so a listener added here would never run.
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(error => {
-        console.warn('Offline support is unavailable:', error);
-      });
+    navigator.serviceWorker.register('sw.js').catch(error => {
+      console.warn('Offline support is unavailable:', error);
     });
   }
 
