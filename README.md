@@ -90,7 +90,7 @@ rather than a broken deploy. Wait ten minutes, or test in a private tab.
 | Screen | What it is for |
 |---|---|
 | **Home** | Start with a photo, choose the slide shape, reopen a draft or a saved style. |
-| **Song** | Search the iTunes catalogue by anything or by artist, or type the details yourself. Set where your Instagram clip starts. |
+| **Song** | Search two catalogues at once, by anything or by artist, or type the details yourself. Set where your Instagram clip starts. |
 | **Editor** | Preview at the top, loop bar under it, and a sheet of controls: Layers, Effects, Animation, Song. |
 | **Export** | Both slides side by side, what the file is, and two taps to get it into Photos. |
 
@@ -106,7 +106,10 @@ js/effects.js           the effect registry: one entry per effect
 js/color.js             pulling colours out of an image (median cut)
 js/gestures.js          drag, pinch, twist
 js/db.js                IndexedDB: drafts and styles
-js/itunes.js            song search
+js/search.js            asks both catalogues, merges and scores the answers
+js/itunes.js            the Apple catalogue
+js/deezer.js            the Deezer catalogue
+js/net.js               fetch and JSONP, shared by both
 js/export.js            frames to a silent MP4
 js/ui.js                small helpers shared by the screens
 js/screens/*.js         one file per screen
@@ -229,32 +232,53 @@ all** through this API, only music videos, which carry no length and so cannot
 drive the progress bar. Setting the store to KR therefore falls back to the US
 store automatically and says so on screen.
 
-**Apple returns filler rather than nothing, so results are checked.** When the
-API cannot match your words it does not send back an empty list. It sends
-popular songs. Typing 작업 returned Taylor Swift and Fleetwood Mac with nothing
-to mark them as padding, and the term returns no genuine match at any limit up
-to 200, in any of fourteen stores. So every result is now checked against the
-words typed: ones that really contain them float to the top, and if not one
-result in the batch contains any of them the whole batch is discarded and the
-screen says so.
+**Two catalogues, because neither one is enough.** They fail in opposite
+directions, measured on the same queries:
 
-That check alone would have broken Korean artist names, because Apple files
-아이유 under "IU" and none of those results contain the letters typed. The way
-out is that a real artist match comes back as one performer's catalogue while
-filler scatters. Measured across both kinds: a genuine match runs 0.63 to 0.92
-of results by a single artist, filler 0.08 to 0.15. So a batch with no literal
-match survives if half or more of it is one performer, and the results heading
-then names them, which is also how you find out that 방탄소년단 was read as BTS.
+| query | Deezer | Apple |
+|---|---|---|
+| `작업` | 23 real hits of 25 | 0 of 25 |
+| `작업실` | 21 | 2 |
+| `봄날` | 20 | 8 |
+| `radiohead creep` | finds the Radiohead recording first | acoustic and covers first |
+| `아이유` | finds AKMU | finds IU |
+| `뉴진스` | finds a cover version | finds NewJeans |
+| `archangel burial` | finds meditation music | finds Burial |
 
-**Searching by artist is a different request, not a filter.** The API documents
-an `attribute` parameter (`artistTerm`, `songTerm`) that is supposed to narrow
-what the words match against. For music it is silently ignored: `artistTerm`,
-`songTerm` and no attribute at all return byte-identical results. So **By
-artist** instead finds the performer with `entity=musicArtist`, then asks for
-that artist's catalogue by id. Two requests rather than one, which is why it is
-a mode you choose rather than the default. It is the difference between
-twenty-five songs called Burial and Burial's actual records. There is no
-"title" scope for the same reason: it could not have done anything.
+Deezer indexes Korean song *titles*; Apple knows Korean *artist names*, filing
+아이유 under IU and 뉴진스 under NewJeans. So both are asked at once and the
+answers merged. Deezer needs no key either, but its search endpoint sends no
+CORS header, so it is asked through JSONP. Its cover images do send one, so
+covers still load as blobs and the export is unaffected.
+
+**Results are scored, because Apple answers an unmatchable query with filler.**
+It does not send back an empty list when it cannot match your words; it sends
+popular songs. `작업` returned Taylor Swift and Fleetwood Mac with nothing to
+mark them as padding. Every result is now scored by how many of the words you
+typed it actually contains, with a word in the title or the artist worth more
+than a word in the album, and one extra point when the title is exactly what
+you typed. That single rule sorts out every row of the table above: `작업`
+rises from Deezer, Archangel by Burial beats Archangel Uriel because it matches
+both words rather than one, and Creep beats Creep (Acoustic).
+
+A batch where nothing scores at all is thrown away and the screen says so.
+
+**One more signal, for Korean artist names.** Scoring alone would have binned
+아이유, because Apple files it under "IU" and no result contains the letters
+typed. A real artist match comes back as one performer's catalogue while filler
+scatters: measured, genuine matches run 0.63 to 0.92 of results by a single
+artist, filler 0.08 to 0.15. So a batch survives if half or more is one
+performer, and the heading then names them, which is also how you find out that
+방탄소년단 was read as BTS. Both signals are used together rather than one after
+the other, because either alone gets a case wrong: 뉴진스 turns up a single
+cover version by name while Apple quietly has the whole NewJeans catalogue
+filed under a name that matches nothing.
+
+**YouTube Music was considered and ruled out.** There is no official YouTube
+Music API. The YouTube Data API would need a key, which in a site with no
+server is public and abusable, and its default quota is **100 `search.list`
+calls per day for the whole app**, not per person. A debounced search box would
+exhaust that in one sitting. `ytmusicapi` is unofficial and needs a server.
 
 **Song search needs no fallback in practice.** The iTunes Search API and the
 artwork CDN both send `Access-Control-Allow-Origin: *`, so a normal fetch works
@@ -293,6 +317,11 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.5.0** - Deezer added as a second catalogue alongside Apple, because
+  neither one alone handles Korean: Deezer indexes Korean song titles, Apple
+  knows Korean artist names. Both are asked at once and the answers scored by
+  how many of your words each result really contains. 작업 goes from nothing to
+  nineteen results.
 - **0.4.1** - Results are checked against what you typed. Apple answers an
   unmatchable query with popular songs rather than with nothing, so a search
   for 작업 came back full of Taylor Swift. Genuine matches now sort to the top

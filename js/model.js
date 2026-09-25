@@ -131,13 +131,15 @@ export const LAYER_LABELS = {
 export function emptySong() {
   return {
     id: null,
+    source: null,          // which catalogue it came from
     title: '',
     artist: '',
     album: '',
     year: '',
     durationMs: 0,
     version: '',
-    artworkUrl: '',
+    artworkUrl100: '',
+    coverUrls: [],         // biggest first; used when the cover is fetched
     clipStartSeconds: 0,
   };
 }

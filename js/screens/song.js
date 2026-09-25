@@ -20,7 +20,7 @@ import { formatTime } from '../model.js';
 import {
   searchSongs, fetchCoverBlob, parseAppleMusicLink,
   getCountry, setCountry, getScope, setScope, SCOPES,
-} from '../itunes.js';
+} from '../search.js';
 
 export async function enter(root, app) {
   clear(root);
@@ -124,14 +124,15 @@ export async function enter(root, app) {
     app.state.browsing = false;
     project.song = {
       id: song.id,
+      source: song.source,
       title: song.title,
       artist: song.artist,
       album: song.album,
       year: song.year,
       durationMs: song.durationMs,
       version: song.version,
-      artworkUrl: song.artworkUrl,
       artworkUrl100: song.artworkUrl100,
+      coverUrls: song.coverUrls || [],
       clipStartSeconds: 0,
     };
     input.value = songLine(song);

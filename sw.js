@@ -11,7 +11,7 @@
  * straight away.)
  */
 
-const VERSION = 4;
+const VERSION = 5;
 const CACHE = `now-playing-v${VERSION}`;
 
 const SHELL = [
@@ -27,6 +27,9 @@ const SHELL = [
   'js/color.js',
   'js/db.js',
   'js/itunes.js',
+  'js/deezer.js',
+  'js/search.js',
+  'js/net.js',
   'js/export.js',
   'js/gestures.js',
   'js/screens/home.js',
