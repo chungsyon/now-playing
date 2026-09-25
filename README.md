@@ -138,6 +138,43 @@ included. A style is the same project with the photo and song stripped out.
 
 ---
 
+## The look
+
+The app is a darkroom bench, not a dark app. Three rules hold it together, and
+they are all enforced in `css/app.css`:
+
+1. **Nothing is filled except the one thing you are meant to press.** Every
+   other control is a hairline and some light catching an edge. There are no
+   cards, no panels, and no rounded rectangle sitting inside a slightly lighter
+   rounded rectangle. That pattern is what makes most dark apps look alike.
+2. **Only pressable things have corners.** Buttons get a 10px radius; there is
+   exactly one `border-radius` rule in the whole stylesheet. Everything else is
+   square, like a print or a frame of film.
+3. **Time is always visible**, in monospace, to one decimal. A darkroom is a
+   place of measurement, so counts and durations sit at the end of the rule
+   that labels each group.
+
+Two pieces carry most of the character. The **title card** is the screen's name
+set large in tracked capitals with a short rule of safelight under it. The
+**bottle label** is a group's name in small tracked capitals, with a rule
+running out to a measured value at the end of it, the way a chemistry bottle is
+labelled:
+
+```
+TRAY ------------------------------------------------ 03 frames
+```
+
+The loop is shown on an **enlarger timer**: a ring with a sweep of light
+running round it and the count beside it, rather than a progress bar. It is the
+one piece of instrumentation in the app, and it is the time motif made literal.
+
+In the editor the slide has no frame, no corner radius and no shadow; it sits
+on black with the controls receding beneath it. On a square slide it reaches
+both screen edges. On 4:5 and 3:4 it stops 12 to 36px short, because an editor
+has to show you the whole frame and the bench needs its height.
+
+---
+
 ## Decisions, and why
 
 **Muxer: [Mediabunny](https://mediabunny.dev) 1.59.1**, vendored at
@@ -220,6 +257,9 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.3.0** - The look rebuilt as a darkroom bench: no filled panels anywhere,
+  title cards, bottle labels with measured values, an enlarger timer in place
+  of the loop bar, and the slide sitting on black with no frame around it.
 - **0.2.0** - The first real version. Four screens, two templates (Vinyl and
   Player), layers with drag, pinch and twist, three effects, colour extraction,
   drafts and styles in IndexedDB, song search, silent MP4 export, offline

@@ -4,7 +4,7 @@
  * Start a slide, or pick up one you left in the tray.
  */
 
-import { h, clear, icon, iconButton, segmented, emptyState, toast } from '../ui.js';
+import { h, clear, icon, iconButton, segmented, emptyState, toast, titleCard, bottle } from '../ui.js';
 import { ASPECTS } from '../model.js';
 import { listDrafts, deleteDraft, listStyles, deleteStyle } from '../db.js';
 
@@ -55,16 +55,18 @@ export async function enter(root, app) {
     ratioGroup.select(value);
   }, 'Slide shape');
 
-  const draftsBox = h('div', { class: 'rows' });
-  const stylesBox = h('div', { class: 'rows' });
+  const draftsBox = h('div', { class: 'items' });
+  const stylesBox = h('div', { class: 'items' });
+  const trayLabel = bottle('Tray', '');
+  const stylesLabel = bottle('Your styles', '');
 
   root.append(
-    h('div', { class: 'stack stack--wide develops', style: { paddingTop: '6px' } },
+    h('div', { class: 'stack stack--wide develops', style: { paddingTop: '26px' } },
 
       h('div', { class: 'stack' },
-        h('h1', { class: 'title' }, 'Now Playing'),
-        h('p', { class: 'body' },
-          'Make the second slide: a quiet loop that shows a song is attached.'),
+        titleCard('Now Playing'),
+        h('p', { class: 'body', style: { marginTop: '6px' } },
+          'Slide two of a carousel. Silent, looping, and it says a song is on.'),
       ),
 
       h('div', { class: 'stack' },
@@ -77,30 +79,35 @@ export async function enter(root, app) {
       ),
 
       h('div', { class: 'stack' },
-        h('h2', { class: 'label' }, 'Slide shape'),
+        bottle('Shape'),
         ratioGroup,
         customBlock,
       ),
 
       h('div', { class: 'stack' },
-        h('h2', { class: 'label' }, 'In the tray'),
+        trayLabel,
         draftsBox,
       ),
 
       h('div', { class: 'stack' },
-        h('h2', { class: 'label' }, 'Your styles'),
+        stylesLabel,
         stylesBox,
       ),
     ),
   );
 
   await Promise.all([
-    fillDrafts(draftsBox, app),
-    fillStyles(stylesBox, app),
+    fillDrafts(draftsBox, app, trayLabel),
+    fillStyles(stylesBox, app, stylesLabel),
   ]);
 }
 
-async function fillDrafts(box, app) {
+function setCount(label, n, word) {
+  const value = label.querySelector('.bottle__value');
+  if (value) value.textContent = n === 0 ? '' : `${String(n).padStart(2, '0')} ${word}`;
+}
+
+async function fillDrafts(box, app, label) {
   clear(box);
   let drafts = [];
   try {
@@ -110,47 +117,50 @@ async function fillDrafts(box, app) {
     return;
   }
 
+  setCount(label, drafts.length, drafts.length === 1 ? 'frame' : 'frames');
+
   if (drafts.length === 0) {
     box.append(emptyState('Nothing in the tray yet.'));
     return;
   }
 
   for (const draft of drafts) {
-    const art = h('img', { class: 'row__art', alt: '' });
+    const frame = h('img', { class: 'item__frame', alt: '' });
     if (draft.photo) {
       const url = URL.createObjectURL(draft.photo);
-      art.src = url;
-      art.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+      frame.src = url;
+      frame.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
     }
 
     const open = h('button', {
-      class: 'row',
+      class: 'item',
       type: 'button',
       onclick: () => app.openDraft(draft.id),
     },
-      art,
-      h('div', { class: 'row__main' },
-        h('div', { class: 'row__title' }, draft.project.song.title || 'No song yet'),
-        h('div', { class: 'row__sub' },
-          `${draft.project.song.artist || 'Waiting for a song'} · ${when(draft.updatedAt)}`),
+      frame,
+      h('span', { class: 'item__main' },
+        h('span', { class: 'item__title' }, draft.project.song.title || 'No song yet'),
+        h('span', { class: 'item__sub' },
+          `${draft.project.song.artist || 'Waiting for a song'}  ${when(draft.updatedAt)}`),
       ),
-      icon('caret-right', { size: 'sm' }),
+      h('span', { class: 'item__value' },
+        `${draft.project.loopSeconds.toFixed(1)}s`),
     );
 
     const remove = iconButton('trash', 'Discard this draft', async () => {
       await deleteDraft(draft.id);
       toast('Discarded.');
-      await fillDrafts(box, app);
+      await fillDrafts(box, app, label);
     });
 
-    box.append(h('div', { style: { display: 'flex', gap: '4px', alignItems: 'center' } },
-      h('div', { class: 'grow', style: { minWidth: 0 } }, open),
+    box.append(h('div', { class: 'item-row' },
+      h('div', { class: 'grow', style: { minWidth: '0' } }, open),
       remove,
     ));
   }
 }
 
-async function fillStyles(box, app) {
+async function fillStyles(box, app, label) {
   clear(box);
   let styles = [];
   try {
@@ -159,6 +169,8 @@ async function fillStyles(box, app) {
     styles = [];
   }
 
+  setCount(label, styles.length, styles.length === 1 ? 'style' : 'styles');
+
   if (styles.length === 0) {
     box.append(emptyState('Save a look from the editor and it will wait here.'));
     return;
@@ -166,22 +178,22 @@ async function fillStyles(box, app) {
 
   for (const style of styles) {
     const open = h('button', {
-      class: 'row',
+      class: 'item',
       type: 'button',
       onclick: () => app.startFromStyle(style),
     },
-      h('div', { class: 'row__main' },
-        h('div', { class: 'row__title' }, style.name),
-        h('div', { class: 'row__sub' }, `${style.project.template} · ${when(style.updatedAt)}`),
+      h('span', { class: 'item__main' },
+        h('span', { class: 'item__title' }, style.name),
+        h('span', { class: 'item__sub' }, `${style.project.template}  ${when(style.updatedAt)}`),
       ),
       icon('caret-right', { size: 'sm' }),
     );
     const remove = iconButton('trash', `Remove the style ${style.name}`, async () => {
       await deleteStyle(style.id);
-      await fillStyles(box, app);
+      await fillStyles(box, app, label);
     });
-    box.append(h('div', { style: { display: 'flex', gap: '4px', alignItems: 'center' } },
-      h('div', { class: 'grow', style: { minWidth: 0 } }, open),
+    box.append(h('div', { class: 'item-row' },
+      h('div', { class: 'grow', style: { minWidth: '0' } }, open),
       remove,
     ));
   }

@@ -117,7 +117,7 @@ export function sliderRow({ label, min, max, step, value, format, onInput }) {
  * `options` is [{ value, label }]; `onPick` gets the chosen value.
  */
 export function segmented(options, current, onPick, ariaLabel) {
-  const group = h('div', { class: 'segmented', role: 'group', 'aria-label': ariaLabel || '' });
+  const group = h('div', { class: 'choices', role: 'group', 'aria-label': ariaLabel || '' });
   for (const option of options) {
     const button = h('button', {
       type: 'button',
@@ -138,6 +138,89 @@ export function segmented(options, current, onPick, ariaLabel) {
 
 export function emptyState(message) {
   return h('p', { class: 'empty' }, message);
+}
+
+/**
+ * A title card: the screen's name, large and tracked wide, with a short rule
+ * of safelight under it. One per screen, never more.
+ */
+export function titleCard(text) {
+  return h('div', {},
+    h('h1', { class: 'titlecard' }, text),
+    h('div', { class: 'titlecard__rule' }),
+  );
+}
+
+/**
+ * A bottle label: what this group of controls is, a rule running out to the
+ * edge of the column, and optionally a measured value sitting at the end.
+ *
+ *   SHAPE ------------------------------------------- 1080 x 1350
+ */
+export function bottle(name, value = null) {
+  return h('p', { class: 'bottle' },
+    h('span', { class: 'bottle__name' }, name),
+    h('span', { class: 'bottle__line' }),
+    // An empty string still gets a slot, so a count can be written into it
+    // once the list it measures has loaded. Only null means "no value here".
+    value === null || value === undefined ? null : h('span', { class: 'bottle__value' }, value),
+  );
+}
+
+/**
+ * The enlarger timer. A ring with a sweep of light running round it and the
+ * count beside it, instead of a progress bar. Returns the element plus a
+ * `set` function, so the editor can drive it every frame without rebuilding
+ * anything.
+ */
+export function loopTimer() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const RADIUS = 15.5;
+  const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'timer__dial');
+  svg.setAttribute('viewBox', '0 0 36 36');
+  svg.setAttribute('aria-hidden', 'true');
+
+  const ring = document.createElementNS(NS, 'circle');
+  ring.setAttribute('class', 'timer__ring');
+  ring.setAttribute('cx', '18');
+  ring.setAttribute('cy', '18');
+  ring.setAttribute('r', String(RADIUS));
+
+  const sweep = document.createElementNS(NS, 'circle');
+  sweep.setAttribute('class', 'timer__sweep');
+  sweep.setAttribute('cx', '18');
+  sweep.setAttribute('cy', '18');
+  sweep.setAttribute('r', String(RADIUS));
+  sweep.setAttribute('stroke-dasharray', String(CIRCUMFERENCE));
+  sweep.setAttribute('stroke-dashoffset', String(CIRCUMFERENCE));
+
+  const hand = document.createElementNS(NS, 'line');
+  hand.setAttribute('class', 'timer__hand');
+  hand.setAttribute('x1', '18');
+  hand.setAttribute('y1', '18');
+  hand.setAttribute('x2', '18');
+  hand.setAttribute('y2', '5.5');
+
+  svg.append(ring, sweep, hand);
+
+  const now = h('b', {}, '0.0');
+  const total = h('span', {}, '/ 8.0');
+  const read = h('span', { class: 'timer__read' }, now, ' ', total);
+  const node = h('div', { class: 'timer' }, svg, read);
+
+  return {
+    node,
+    set(t, loopSeconds) {
+      const fraction = loopSeconds > 0 ? Math.min(1, t / loopSeconds) : 0;
+      sweep.setAttribute('stroke-dashoffset', String(CIRCUMFERENCE * (1 - fraction)));
+      hand.setAttribute('transform', `rotate(${fraction * 360} 18 18)`);
+      now.textContent = t.toFixed(1);
+      total.textContent = `/ ${loopSeconds.toFixed(1)}`;
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

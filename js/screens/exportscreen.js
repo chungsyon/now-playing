@@ -9,7 +9,7 @@
  * a long render finishes.
  */
 
-import { h, clear, icon, toast } from '../ui.js';
+import { h, clear, icon, toast, titleCard, bottle } from '../ui.js';
 import { formatTime } from '../model.js';
 import { Stage, render } from '../render.js';
 import { renderToVideo, saveVideo, exportSupport, FPS } from '../export.js';
@@ -32,6 +32,7 @@ export async function enter(root, app) {
 
   // Slide 2: one frame of what is about to be rendered.
   const slideThumb = h('canvas', { 'aria-label': 'The slide this app will make' });
+  slideThumb.style.aspectRatio = `${w} / ${height}`;
   drawStill(app, slideThumb);
 
   const progress = h('div', { class: 'progress__fill' });
@@ -65,6 +66,7 @@ export async function enter(root, app) {
         const video = h('video', {
           src: lastUrl, loop: true, muted: true, playsinline: true, controls: true,
         });
+        video.style.aspectRatio = `${w} / ${height}`;
         video.addEventListener('error', () => {
           status.textContent =
             'The file is made, but this browser will not play it back. Save it and look in Photos.';
@@ -93,16 +95,21 @@ export async function enter(root, app) {
   const support = await exportSupport();
 
   root.append(
-    h('div', { class: 'stack stack--wide develops' },
+    h('div', { class: 'stack stack--wide develops', style: { paddingTop: '10px' } },
+
+      titleCard('The print'),
 
       h('div', { class: 'slides' },
         h('figure', { class: 'slide-card', style: { margin: '0' } },
-          photoThumb, h('figcaption', {}, 'Slide 1 · your photo')),
+          photoThumb, h('figcaption', {}, 'Slide 1 / your photo')),
         h('figure', { class: 'slide-card', style: { margin: '0' } },
-          slideThumb, h('figcaption', {}, 'Slide 2 · this app')),
+          slideThumb, h('figcaption', {}, 'Slide 2 / this app')),
       ),
 
-      factsBox,
+      h('div', { class: 'stack', style: { gap: '10px' } },
+        bottle('The file'),
+        factsBox,
+      ),
       progressBar,
       status,
       renderButton,
@@ -114,8 +121,8 @@ export async function enter(root, app) {
             'real time instead. It still comes out silent, just a little softer.')
         : null,
 
-      h('div', { class: 'stack' },
-        h('h2', { class: 'label' }, 'In Instagram'),
+      h('div', { class: 'stack', style: { gap: '10px' } },
+        bottle('In Instagram'),
         h('ol', { class: 'checklist' },
           step(1, 'Add your photo first, as slide 1.'),
           step(2, 'Add this video second, as slide 2.'),
@@ -150,12 +157,13 @@ function facts(box, project, result) {
   const rows = [
     ['Format', 'MP4, H.264'],
     ['Size', `${project.aspect.w} x ${project.aspect.h}`],
-    ['Loop', `${project.loopSeconds}s at ${FPS} fps`],
+    ['Loop', `${project.loopSeconds.toFixed(1)}s at ${FPS} fps`],
+    ['Frames', String(Math.round(project.loopSeconds * FPS))],
     ['Audio', 'none'],
   ];
   if (result) rows.push(['File', `${(result.blob.size / 1048576).toFixed(1)} MB`]);
   for (const [term, value] of rows) {
-    box.append(h('dt', {}, term), h('dd', {}, value));
+    box.append(h('div', { class: 'facts__row' }, h('dt', {}, term), h('dd', {}, value)));
   }
 }
 

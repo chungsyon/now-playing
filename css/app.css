@@ -1,8 +1,20 @@
 /* ===========================================================================
    NOW PLAYING - the look
    ---------------------------------------------------------------------------
-   A darkroom with the safelight on. Warm near-black, one amber light, a faint
-   grain over everything, and type that stays small so the photo can be big.
+   A darkroom bench, not a dark app.
+
+   Three rules hold the whole thing together:
+
+   1. NOTHING IS FILLED except the one thing you are meant to press. Every
+      other control is drawn with a hairline and a bit of light catching an
+      edge. No cards, no panels, no rounded rectangle sitting inside a
+      slightly lighter rounded rectangle.
+
+   2. ONLY PRESSABLE THINGS HAVE CORNERS. Buttons get a 10px radius.
+      Everything else is square, like a print or a frame of film.
+
+   3. TIME IS ALWAYS VISIBLE, always in monospace, always to one decimal.
+      A darkroom is a place of measurement.
 
    The app is dark only, on purpose. A light mode would be a lit darkroom, and
    the whole idea is that the darkness is where the good part happens.
@@ -44,39 +56,32 @@
 /* --- Tokens ------------------------------------------------------------- */
 
 :root {
-  /* The room */
   --room: #141312;
   --room-deep: #0E0D0C;
-  --surface: #1E1C1A;
-  --surface-raised: #2A2724;
-  --hairline: #3A3632;
+  --hairline: #332F2B;
+  --hairline-bright: #4A443E;
 
-  /* Light */
   --print: #F3EFE9;
   --muted: #A8A097;
+  --dim: #8A8279;
   --safelight: #F2A65A;
   --on-safelight: #1A1410;
   --warning: #E08A6B;
 
-  /* Type */
   --serif: 'Instrument Serif', Georgia, 'Times New Roman', serif;
   --sans: 'DM Sans', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  /* One radius system: small controls, everything else, and the big surfaces.
-     Nothing on screen uses a radius outside these three. */
-  --r-sm: 10px;
-  --r-md: 14px;
-  --r-lg: 22px;
+  /* Only things you press have corners. */
+  --r-press: 10px;
 
   /* Motion. Ease-out only: things settle, they never overshoot. */
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --t-quick: 180ms;
   --t-ui: 300ms;
-  --t-screen: 380ms;
-  --t-develop: 1100ms;
+  --t-screen: 420ms;
+  --t-develop: 1200ms;
 
-  /* Layers, all of them, in one place. */
   --z-sheet: 20;
   --z-topbar: 30;
   --z-toast: 40;
@@ -84,6 +89,7 @@
   --z-grain: 60;
 
   --tap: 44px;
+  --gutter: 22px;
 
   color-scheme: dark;
 }
@@ -92,10 +98,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html, body {
-  height: 100%;
-  margin: 0;
-}
+html, body { height: 100%; margin: 0; }
 
 body {
   background: var(--room);
@@ -110,80 +113,95 @@ body {
 
 img { max-width: 100%; display: block; }
 [hidden] { display: none !important; }
+button, input, select, textarea { font: inherit; color: inherit; }
 
-button, input, select, textarea {
-  font: inherit;
-  color: inherit;
-}
+:focus-visible { outline: 1px solid var(--safelight); outline-offset: 3px; }
 
-:focus-visible {
-  outline: 2px solid var(--safelight);
-  outline-offset: 2px;
-  border-radius: var(--r-sm);
-}
+/* --- The room: safelight and grain --------------------------------------
+   The light comes from one place, overhead, and falls away toward the
+   corners. Strong enough to read as a light rather than a tint nobody
+   notices. */
 
-/* --- The room itself: safelight and grain ------------------------------- */
-
-/* A soft warm light from overhead, falling off toward the corners. Not a
-   visible gradient band, just enough that the screen has a direction. */
 .room-light {
   position: fixed;
   inset: 0;
   z-index: var(--z-light);
   pointer-events: none;
   background:
-    radial-gradient(120% 62% at 50% -12%, rgba(242, 166, 90, 0.085), transparent 62%),
-    radial-gradient(150% 95% at 50% 42%, transparent 52%, rgba(6, 4, 3, 0.55) 100%);
+    radial-gradient(112% 58% at 50% -16%, rgba(242, 166, 90, 0.15), transparent 64%),
+    radial-gradient(140% 88% at 50% 38%, transparent 44%, rgba(5, 3, 2, 0.70) 100%);
 }
 
-/* Film grain. Static, faint, and fixed to the viewport so it never repaints
-   while anything scrolls. */
+/* Film grain. Static, and fixed to the viewport so it never repaints while
+   anything scrolls. */
 .room-grain {
   position: fixed;
   inset: 0;
   z-index: var(--z-grain);
   pointer-events: none;
-  opacity: 0.045;
+  opacity: 0.075;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
   background-size: 160px 160px;
 }
 
-/* --- Type --------------------------------------------------------------- */
+/* --- Type ---------------------------------------------------------------- */
 
-.title {
+/* The title card. Large, spaced, alone, with a short rule of light beneath.
+   Serif because the brief asks for one, in caps and tracked wide because
+   that is what a title card is. */
+.titlecard {
+  margin: 0;
   font-family: var(--serif);
   font-weight: 400;
-  font-size: clamp(30px, 8.5vw, 40px);
-  /* Room for the descenders on g, y and p at this size. */
-  line-height: 1.12;
-  letter-spacing: 0.01em;
-  margin: 0;
-  padding-bottom: 2px;
+  font-size: clamp(24px, 6.6vw, 31px);
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  /* Tracking adds space after the last letter too; pull it back so the line
+     still looks square with the column. */
+  margin-right: -0.2em;
+  padding-bottom: 3px;
 }
 
-.title--sm { font-size: clamp(22px, 6vw, 27px); }
+.titlecard__rule {
+  width: 58px;
+  height: 1px;
+  margin-top: 15px;
+  background: var(--safelight);
+}
 
-/* The darkroom label: small, spaced, quiet. Used for the name of a group of
-   controls, never as decoration above a heading. */
-.label {
-  font-size: 11px;
+/* The bottle label: small tracked caps, a rule running out to the edge of
+   the column, and an optional measured value at the end of it. */
+.bottle { display: flex; align-items: center; gap: 12px; margin: 0; }
+.bottle__name {
+  flex: none;
+  font-size: 10.5px;
   font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.26em;
   color: var(--muted);
-  margin: 0;
+}
+.bottle__line { flex: 1; height: 1px; background: var(--hairline); }
+.bottle__value {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
 }
 
 .mono {
   font-family: var(--mono);
   font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  letter-spacing: 0.01em;
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
 }
 
-.body { color: var(--muted); font-size: 14px; margin: 0; max-width: 46ch; }
+.body { color: var(--muted); font-size: 14px; margin: 0; max-width: 44ch; }
+.body--tight { font-size: 13px; }
 
-/* --- App frame ---------------------------------------------------------- */
+/* --- App frame ----------------------------------------------------------- */
 
 #app {
   /* 100dvh, not 100vh: the iPhone address bar changes the height and dvh
@@ -195,26 +213,27 @@ button, input, select, textarea {
 }
 
 .topbar {
-  position: sticky;
-  top: env(safe-area-inset-top, 0px);
+  flex: none;
   z-index: var(--z-topbar);
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 60px;
-  padding: 0 8px;
-  background: linear-gradient(to bottom, var(--room) 62%, transparent);
+  gap: 10px;
+  height: 54px;
+  padding: 0 calc(var(--gutter) - 12px);
+  background: var(--room);
 }
 
 .topbar__title {
   flex: 1;
   min-width: 0;
-  font-family: var(--serif);
-  font-size: 20px;
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.26em;
   text-align: center;
+  color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .screen {
@@ -224,24 +243,9 @@ button, input, select, textarea {
   flex-direction: column;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 0 20px calc(28px + env(safe-area-inset-bottom, 0px));
+  padding: 0 var(--gutter) calc(30px + env(safe-area-inset-bottom, 0px));
 }
 .screen.is-active { display: flex; }
-
-/* The editor does not scroll as a whole. The preview takes whatever height is
-   left over, and the sheet does its own scrolling underneath. */
-.screen--editor {
-  overflow: hidden;
-  padding-bottom: 0;
-}
-.editor-stage {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 0 10px;
-}
 
 /* Screen changes are cuts, not slides. */
 .screen.is-entering { animation: fade-up var(--t-screen) var(--ease) both; }
@@ -251,11 +255,31 @@ button, input, select, textarea {
   to { opacity: 1; }
 }
 
-.stack { display: flex; flex-direction: column; gap: 14px; }
-.stack--wide { gap: 24px; }
+/* The editor does not scroll as a whole, and the slide runs to the screen
+   edges with nothing at all around it. */
+.screen--editor { overflow: hidden; padding: 0; }
+.editor-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* No frame, no rounded corner, no shadow. The slide meets the screen. */
+.stagewrap {
+  position: relative;
+  background: var(--room-deep);
+  touch-action: none;
+}
+.stagewrap canvas { display: block; width: 100%; height: 100%; }
+.stagewrap__overlay { position: absolute; inset: 0; }
+
+.stack { display: flex; flex-direction: column; gap: 16px; }
+.stack--wide { gap: 34px; }
 .grow { flex: 1; }
 
-/* --- Develop: the way things arrive ------------------------------------
+/* --- Develop: the way things arrive -------------------------------------
    Content fades up while a dark sheet over it fades away, so it brightens
    into place like a print in the tray. Both halves are opacity, so this
    stays cheap on a phone. */
@@ -266,47 +290,50 @@ button, input, select, textarea {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  border-radius: inherit;
   background: var(--room-deep);
   animation: develop-clear var(--t-develop) var(--ease) both;
 }
 @keyframes develop-clear {
-  from { opacity: 0.92; }
+  from { opacity: 0.94; }
   to { opacity: 0; }
 }
 
-/* --- Buttons ------------------------------------------------------------ */
+/* --- Buttons -------------------------------------------------------------
+   The primary button is the only filled thing in the whole app. Everything
+   else is a hairline. */
 
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 11px;
   min-height: var(--tap);
-  padding: 11px 18px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  background: var(--surface-raised);
+  padding: 12px 20px;
+  border: 1px solid var(--hairline-bright);
+  border-radius: var(--r-press);
+  background: transparent;
   color: var(--print);
-  font-size: 15px;
+  font-size: 11px;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
   white-space: nowrap;
   cursor: pointer;
-  transition: background var(--t-quick) var(--ease), transform var(--t-quick) var(--ease);
+  transition: border-color var(--t-quick) var(--ease),
+              color var(--t-quick) var(--ease),
+              transform var(--t-quick) var(--ease);
 }
 .btn:active { transform: translateY(1px); }
-.btn:disabled { opacity: 0.4; cursor: default; transform: none; }
+.btn:disabled { opacity: 0.35; cursor: default; transform: none; }
 
 .btn--primary {
   background: var(--safelight);
   border-color: var(--safelight);
   color: var(--on-safelight);
-  font-weight: 500;
 }
 .btn--primary:active { background: #E59A50; }
 
-.btn--quiet { background: transparent; }
-
+.btn--bare { border-color: transparent; color: var(--muted); letter-spacing: 0.14em; }
 .btn--block { width: 100%; }
 
 .btn--icon {
@@ -315,53 +342,44 @@ button, input, select, textarea {
   height: var(--tap);
   padding: 0;
   border-color: transparent;
-  background: transparent;
   color: var(--print);
 }
-.btn--icon:active { background: var(--surface); }
+.btn--icon:active { color: var(--safelight); }
 
-.icon { width: 22px; height: 22px; flex: none; fill: currentColor; }
-.icon--sm { width: 18px; height: 18px; }
+.icon { width: 21px; height: 21px; flex: none; fill: currentColor; }
+.icon--sm { width: 17px; height: 17px; }
 
-/* --- Inputs ------------------------------------------------------------- */
+/* --- Inputs --------------------------------------------------------------
+   Typed onto a line, the way a bottle gets labelled. No box. */
 
-.field { display: flex; flex-direction: column; gap: 8px; }
-
+.field { display: flex; flex-direction: column; gap: 9px; }
 .field > label { font-size: 13px; color: var(--muted); }
 
 .input {
   width: 100%;
   min-height: var(--tap);
-  padding: 11px 14px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-sm);
-  background: var(--surface);
+  padding: 10px 2px;
+  border: none;
+  border-bottom: 1px solid var(--hairline-bright);
+  border-radius: 0;
+  background: transparent;
   color: var(--print);
   -webkit-appearance: none;
+  transition: border-color var(--t-quick) var(--ease);
 }
-/* Contrast checked: #8E867D on #1E1C1A is 4.6:1. */
+/* Contrast checked: #8E867D on the room is 5.0:1. */
 .input::placeholder { color: #8E867D; }
-.input:focus { border-color: var(--safelight); outline: none; }
+.input:focus { border-bottom-color: var(--safelight); outline: none; }
 
 .field__hint { font-size: 12px; color: var(--muted); }
-.field__error { font-size: 12px; color: var(--warning); }
 
-.search {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-.search .icon {
-  position: absolute;
-  left: 13px;
-  color: var(--muted);
-  pointer-events: none;
-}
-.search .input { padding-left: 44px; }
+.search { position: relative; display: flex; align-items: center; }
+.search .icon { position: absolute; left: 0; color: var(--dim); pointer-events: none; }
+.search .input { padding-left: 28px; }
 
-/* --- Sliders ------------------------------------------------------------
-   The fill left of the thumb is the safelight. The percentage is written to
-   --fill by JavaScript whenever the value changes. */
+/* --- Sliders -------------------------------------------------------------
+   A measuring scale: a hairline track, an amber fill, and a plain upright
+   marker rather than a bubble. */
 
 .slider {
   --fill: 50%;
@@ -373,35 +391,33 @@ button, input, select, textarea {
   cursor: pointer;
 }
 .slider::-webkit-slider-runnable-track {
-  height: 3px;
-  border-radius: 999px;
+  height: 1px;
   background: linear-gradient(to right,
-    var(--safelight) 0 var(--fill), rgba(243, 239, 233, 0.16) var(--fill) 100%);
+    var(--safelight) 0 var(--fill), var(--hairline-bright) var(--fill) 100%);
 }
 .slider::-moz-range-track {
-  height: 3px;
-  border-radius: 999px;
+  height: 1px;
   background: linear-gradient(to right,
-    var(--safelight) 0 var(--fill), rgba(243, 239, 233, 0.16) var(--fill) 100%);
+    var(--safelight) 0 var(--fill), var(--hairline-bright) var(--fill) 100%);
 }
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 18px;
+  width: 2px;
   height: 18px;
-  margin-top: -7.5px;
-  border-radius: 999px;
-  background: var(--print);
+  margin-top: -8.5px;
   border: none;
+  border-radius: 0;
+  background: var(--print);
 }
 .slider::-moz-range-thumb {
-  width: 18px;
+  width: 2px;
   height: 18px;
   border: none;
-  border-radius: 999px;
+  border-radius: 0;
   background: var(--print);
 }
 
-.slider-row { display: flex; flex-direction: column; gap: 2px; }
+.slider-row { display: flex; flex-direction: column; }
 .slider-row__head {
   display: flex;
   justify-content: space-between;
@@ -409,320 +425,334 @@ button, input, select, textarea {
   gap: 12px;
 }
 .slider-row__head span:first-child { font-size: 13px; color: var(--muted); }
+.slider-row__head .mono { color: var(--print); }
 
-/* --- Segmented choices (ratio, background, template) -------------------- */
+/* --- Choices -------------------------------------------------------------
+   No segmented box. Just the words, with the live one underlined in amber. */
 
-.segmented {
+.choices {
   display: flex;
-  gap: 6px;
-  padding: 4px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  background: var(--surface);
+  gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
+  margin: 0 -10px;
 }
-.segmented::-webkit-scrollbar { display: none; }
+.choices::-webkit-scrollbar { display: none; }
 
-.segmented button {
-  flex: 1 0 auto;
-  min-height: 38px;
-  padding: 7px 14px;
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
+.choices button {
+  flex: 0 0 auto;
+  min-height: var(--tap);
+  padding: 11px 10px;
+  border: none;
+  border-bottom: 1px solid transparent;
   background: transparent;
-  color: var(--muted);
-  font-size: 13px;
+  color: var(--dim);
+  font-size: 12px;
   font-weight: 500;
+  letter-spacing: 0.08em;
   white-space: nowrap;
   cursor: pointer;
-  transition: color var(--t-quick) var(--ease), background var(--t-quick) var(--ease);
+  transition: color var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease);
 }
-.segmented button[aria-pressed='true'] {
-  background: var(--surface-raised);
-  border-color: var(--hairline);
+.choices button[aria-pressed='true'] {
   color: var(--print);
+  border-bottom-color: var(--safelight);
 }
 
-/* Colour swatches. Same frame as a segmented row, but the button IS the
-   colour, so the pressed state has to be a ring rather than a fill. */
-.swatches {
-  display: flex;
-  gap: 6px;
-  padding: 4px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  background: var(--surface);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
+/* Colour swatches: the one place a fill carries meaning, because the fill
+   IS the information. */
+.swatches { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 4px 0; }
 .swatches::-webkit-scrollbar { display: none; }
 .swatches button {
-  flex: 1 0 46px;
-  min-height: 38px;
-  border: 2px solid transparent;
-  border-radius: var(--r-sm);
+  flex: 0 0 46px;
+  height: 38px;
+  border: 1px solid var(--hairline);
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px rgba(8, 5, 3, 0.4);
+  transition: box-shadow var(--t-quick) var(--ease);
 }
 .swatches button[aria-pressed='true'] {
   border-color: var(--safelight);
+  box-shadow: 0 0 0 1px var(--safelight);
 }
 
-/* --- Lists -------------------------------------------------------------- */
+/* --- Items ---------------------------------------------------------------
+   A list is rules and text. Nothing sits on a panel. */
 
-.rows { display: flex; flex-direction: column; gap: 8px; }
+.items { display: flex; flex-direction: column; }
 
-.row {
+.item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
-  min-height: 60px;
-  padding: 10px 12px;
-  border: 1px solid transparent;
-  border-radius: var(--r-md);
-  background: var(--surface);
+  min-height: 62px;
+  padding: 12px 0;
+  border: none;
+  background: transparent;
   color: var(--print);
   text-align: left;
   cursor: pointer;
-  transition: background var(--t-quick) var(--ease);
 }
-.row.is-selected { border-color: var(--safelight); }
-.row__main { flex: 1; min-width: 0; }
-.row__title {
+.items > * { border-top: 1px solid var(--hairline); }
+.items > *:last-child { border-bottom: 1px solid var(--hairline); }
+
+.item__main { flex: 1; min-width: 0; }
+.item__main { display: block; }
+.item__title {
+  display: block;
   font-size: 15px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color var(--t-quick) var(--ease);
 }
-.row__sub {
-  font-size: 12.5px;
-  color: var(--muted);
+.item__sub {
+  display: block;
+  font-size: 12px;
+  color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.row__art {
+.item__value {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Selected: the title lights up and a marker appears in the gutter.
+   No fill, no outline box. */
+.item.is-selected .item__title { color: var(--safelight); }
+.item.is-selected::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  margin-top: -10px;
+  width: 2px;
+  height: 20px;
+  background: var(--safelight);
+}
+
+/* A frame of film: square, never rounded. */
+.item__frame {
   width: 46px;
   height: 46px;
   flex: none;
-  border-radius: var(--r-sm);
-  background: var(--surface-raised);
   object-fit: cover;
+  background: var(--room-deep);
+  border: 1px solid var(--hairline);
 }
-.row__actions { display: flex; gap: 2px; flex: none; }
+
+.item-row { display: flex; align-items: center; gap: 2px; }
 
 .tag {
   flex: none;
-  padding: 3px 8px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-sm);
-  font-size: 10.5px;
-  font-weight: 500;
-  letter-spacing: 0.1em;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--dim);
 }
 
-/* --- Empty and loading -------------------------------------------------- */
+/* --- Empty and working --------------------------------------------------- */
 
 .empty {
-  padding: 26px 18px;
-  border: 1px dashed var(--hairline);
-  border-radius: var(--r-md);
-  text-align: center;
-  color: var(--muted);
-  font-size: 14px;
+  padding: 22px 0;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  color: var(--dim);
+  font-size: 13.5px;
 }
 
-/* Developing, not waiting: a band of safelight moving across a dark strip. */
+/* Developing, not waiting: a band of safelight crossing a hairline. */
 .developing {
   position: relative;
-  height: 3px;
-  border-radius: 999px;
-  background: rgba(243, 239, 233, 0.1);
+  height: 1px;
+  background: var(--hairline-bright);
   overflow: hidden;
 }
 .developing::after {
   content: '';
   position: absolute;
   inset: 0;
-  width: 38%;
-  border-radius: inherit;
+  width: 34%;
   background: linear-gradient(90deg, transparent, var(--safelight), transparent);
-  animation: sweep 1.6s var(--ease) infinite;
+  animation: sweep 1.8s var(--ease) infinite;
 }
 @keyframes sweep {
-  from { transform: translateX(-120%); }
-  to { transform: translateX(360%); }
+  from { transform: translateX(-110%); }
+  to { transform: translateX(400%); }
 }
 
-.progress {
-  height: 3px;
-  border-radius: 999px;
-  background: rgba(243, 239, 233, 0.1);
-  overflow: hidden;
-}
+.progress { height: 1px; background: var(--hairline-bright); overflow: hidden; }
 .progress__fill {
   height: 100%;
   width: 0%;
-  border-radius: inherit;
   background: var(--safelight);
-  transition: width 220ms linear;
+  transition: width 200ms linear;
 }
 
-/* --- The preview -------------------------------------------------------- */
+/* --- The timer -----------------------------------------------------------
+   The enlarger timer: a ring, a sweep of light running round it, and the
+   count beside it. This is the app's one piece of instrumentation. */
 
-.stagewrap {
-  position: relative;
-  /* The exact size is set in JavaScript, from the space actually left over. */
-  margin: 0 auto;
-  border-radius: var(--r-lg);
-  overflow: hidden;
-  background: var(--room-deep);
-  box-shadow: 0 26px 60px rgba(8, 5, 3, 0.5);
-  touch-action: none;
+.timer { display: flex; align-items: center; gap: 13px; flex: none; }
+.timer__dial { width: 36px; height: 36px; flex: none; display: block; }
+.timer__ring { fill: none; stroke: var(--hairline-bright); stroke-width: 1; }
+.timer__sweep {
+  fill: none;
+  stroke: var(--safelight);
+  stroke-width: 1.5;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
 }
-.stagewrap canvas {
-  display: block;
-  width: 100%;
-  height: auto;
+.timer__hand { stroke: var(--print); stroke-width: 1.5; stroke-linecap: round; }
+.timer__read {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+  letter-spacing: 0.02em;
 }
-.stagewrap__overlay {
-  position: absolute;
-  inset: 0;
-}
+.timer__read b { color: var(--print); font-weight: 400; }
 
 .loopbar {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 2px 4px;
+  gap: 14px;
+  padding: 11px var(--gutter);
 }
-.loopbar .mono { color: var(--muted); flex: none; }
-.loopbar .progress { flex: 1; }
 
-/* --- Bottom sheet ------------------------------------------------------- */
+/* --- The bench: the controls under the slide ----------------------------- */
 
 .sheet {
-  position: sticky;
-  bottom: 0;
+  flex: none;
   z-index: var(--z-sheet);
-  margin: 14px -20px 0;
-  border-top: 1px solid var(--hairline);
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
   background: var(--room);
+  border-top: 1px solid var(--hairline);
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-.sheet__tabs {
-  display: flex;
-  gap: 4px;
-  padding: 6px 12px 0;
-  border-bottom: 1px solid var(--hairline);
-}
+.sheet__tabs { display: flex; padding: 0 var(--gutter); }
 .sheet__tab {
   flex: 1;
   min-height: var(--tap);
-  padding: 10px 4px 12px;
+  padding: 13px 2px 12px;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-bottom: 1px solid transparent;
   background: transparent;
-  color: var(--muted);
-  font-size: 13px;
+  color: var(--dim);
+  font-size: 10px;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
   cursor: pointer;
   transition: color var(--t-quick) var(--ease), border-color var(--t-quick) var(--ease);
 }
-.sheet__tab[aria-selected='true'] {
-  color: var(--print);
-  border-bottom-color: var(--safelight);
-}
+.sheet__tab[aria-selected='true'] { color: var(--print); border-bottom-color: var(--safelight); }
 
 .sheet__body {
-  padding: 16px 20px 20px;
-  /* A fixed height, not a maximum: the preview is sized from what is left,
-     so the sheet must not change height when you switch tabs. */
-  height: clamp(180px, 32dvh, 300px);
+  padding: 18px var(--gutter) 22px;
+  /* A fixed height, not a maximum: the slide is sized from what is left,
+     so the bench must not change height when you switch tabs. */
+  height: clamp(158px, 27dvh, 262px);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-/* --- Export summary ----------------------------------------------------- */
+/* An effect on the bench: a rule, its name, its controls. No box. */
+.effect { padding-bottom: 12px; border-top: 1px solid var(--hairline); }
+.effect__head { display: flex; align-items: center; gap: 2px; min-height: var(--tap); }
+.effect__name {
+  flex: 1;
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+}
 
-.slides {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.slide-card {
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  overflow: hidden;
-  background: var(--room-deep);
-}
+/* --- Export --------------------------------------------------------------- */
+
+.slides { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.slide-card { border: 1px solid var(--hairline); background: var(--room-deep); }
 .slide-card img,
 .slide-card canvas,
-.slide-card video {
-  width: 100%;
-  height: auto;
-  display: block;
-  background: var(--room-deep);
-}
+.slide-card video { width: 100%; height: auto; display: block; background: var(--room-deep); }
 .slide-card figcaption {
-  padding: 9px 11px;
-  font-size: 11px;
-  letter-spacing: 0.14em;
+  padding: 9px 10px;
+  border-top: 1px solid var(--hairline);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--dim);
 }
 
-.facts {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 6px 16px;
-  font-size: 13.5px;
+.facts { display: flex; flex-direction: column; margin: 0; }
+.facts__row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--hairline);
 }
-.facts dt { color: var(--muted); }
-.facts dd { margin: 0; font-family: var(--mono); font-size: 13px; }
+.facts__row:last-child { border-bottom: 1px solid var(--hairline); }
+.facts__row dt {
+  flex: none;
+  width: 82px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--dim);
+}
+.facts__row dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
 
-.checklist { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.checklist { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
 .checklist li {
   display: grid;
-  grid-template-columns: 22px 1fr;
-  gap: 12px;
-  align-items: start;
+  grid-template-columns: 28px 1fr;
+  gap: 14px;
+  align-items: baseline;
+  padding: 13px 0;
+  border-top: 1px solid var(--hairline);
   font-size: 14px;
 }
+.checklist li:last-child { border-bottom: 1px solid var(--hairline); }
 .checklist .step {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 11px;
   color: var(--safelight);
-  padding-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
 .checklist strong { font-weight: 500; }
 
-/* --- Toast -------------------------------------------------------------- */
+/* --- Toast ---------------------------------------------------------------- */
 
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(26px + env(safe-area-inset-bottom, 0px));
   z-index: var(--z-toast);
   transform: translateX(-50%);
-  max-width: min(88vw, 420px);
-  padding: 12px 18px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--r-md);
-  background: var(--surface-raised);
-  font-size: 14px;
+  max-width: min(86vw, 400px);
+  padding: 13px 20px;
+  border: 1px solid var(--hairline-bright);
+  background: var(--room-deep);
+  font-size: 13.5px;
   text-align: center;
-  box-shadow: 0 18px 40px rgba(6, 4, 3, 0.55);
   animation: fade-up var(--t-ui) var(--ease) both;
 }
 
-/* --- Reduce motion -----------------------------------------------------
+/* --- Reduce motion -------------------------------------------------------
    Movement is replaced by a plain fade. Nothing loops. */
 
 @media (prefers-reduced-motion: reduce) {
@@ -731,19 +761,19 @@ button, input, select, textarea {
     animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
   }
-  .developing::after {
-    animation: none;
-    width: 100%;
-    background: var(--safelight);
-    opacity: 0.4;
-  }
+  .developing::after { animation: none; width: 100%; opacity: 0.45; }
   .develops::after { display: none; }
 }
 
-/* --- Wider screens -----------------------------------------------------
+/* --- Wider screens -------------------------------------------------------
    Phones come first. On anything larger the column simply stops growing. */
 
 @media (min-width: 560px) {
-  .screen { max-width: 520px; width: 100%; margin: 0 auto; }
-  .sheet { margin-left: -20px; margin-right: -20px; }
+  .screen { max-width: 470px; width: 100%; margin: 0 auto; }
+  .screen--editor { max-width: none; }
+  /* Keep the slide, the timer and the bench on one column so they line up.
+     Below 560px none of this applies and the slide meets the screen edges. */
+  .screen--editor .editor-stage,
+  .screen--editor .sheet,
+  .screen--editor .loopbar { max-width: 470px; width: 100%; margin: 0 auto; }
 }

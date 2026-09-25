@@ -6,7 +6,7 @@
  * match the ones in Instagram.
  */
 
-import { h, clear, icon, sliderRow, emptyState, toast, decodeImage } from '../ui.js';
+import { h, clear, icon, sliderRow, emptyState, toast, titleCard, bottle } from '../ui.js';
 import { formatTime } from '../model.js';
 import { searchSongs, fetchCoverBlob, parseAppleMusicLink, getCountry, setCountry } from '../itunes.js';
 
@@ -14,7 +14,7 @@ export async function enter(root, app) {
   clear(root);
   const project = app.state.project;
 
-  const results = h('div', { class: 'rows' });
+  const results = h('div', { class: 'items' });
   const status = h('div', {});
   const clipBox = h('div', { class: 'stack' });
   const manualBox = h('div', { class: 'stack', hidden: true });
@@ -81,7 +81,7 @@ export async function enter(root, app) {
 
   function refresh() {
     // Mark the chosen row and rebuild the clip picker underneath.
-    for (const row of results.querySelectorAll('.row')) {
+    for (const row of results.querySelectorAll('.item')) {
       row.classList.toggle('is-selected', row.dataset.songId === project.song.id);
     }
     continueButton.disabled = !project.song.title;
@@ -89,7 +89,9 @@ export async function enter(root, app) {
   }
 
   root.append(
-    h('div', { class: 'stack stack--wide develops' },
+    h('div', { class: 'stack stack--wide develops', style: { paddingTop: '10px' } },
+
+      titleCard('The song'),
 
       h('div', { class: 'search' },
         icon('magnifying-glass', { size: 'sm' }),
@@ -101,13 +103,13 @@ export async function enter(root, app) {
       clipBox,
 
       h('button', {
-        class: 'btn btn--quiet btn--block',
+        class: 'btn btn--bare btn--block',
         type: 'button',
         onclick: () => {
           manualBox.hidden = !manualBox.hidden;
           if (!manualBox.hidden) buildManualForm(manualBox, app, refresh);
         },
-      }, 'Can\'t find it? Enter the details yourself'),
+      }, 'Not listed? Type it in'),
 
       manualBox,
       continueButton,
@@ -141,7 +143,7 @@ export async function enter(root, app) {
 function resultRow(song, app, refresh) {
   const project = app.state.project;
   const row = h('button', {
-    class: 'row',
+    class: 'item',
     type: 'button',
     onclick: async () => {
       await chooseSong(app, song);
@@ -149,19 +151,18 @@ function resultRow(song, app, refresh) {
     },
   },
     h('img', {
-      class: 'row__art',
+      class: 'item__frame',
       src: song.artworkUrl100,
       alt: '',
       loading: 'lazy',
       crossorigin: 'anonymous',
     }),
-    h('div', { class: 'row__main' },
-      h('div', { class: 'row__title' }, song.title),
-      h('div', { class: 'row__sub' },
-        [song.artist, song.album, song.year, formatTime(song.durationMs / 1000)]
-          .filter(Boolean).join(' · ')),
+    h('span', { class: 'item__main' },
+      h('span', { class: 'item__title' }, song.title),
+      h('span', { class: 'item__sub' },
+        [song.artist, song.album, song.year].filter(Boolean).join('  ')),
     ),
-    h('span', { class: 'tag' }, song.version),
+    h('span', { class: 'item__value' }, formatTime(song.durationMs / 1000)),
   );
   row.dataset.songId = song.id;
   if (song.id === project.song.id) row.classList.add('is-selected');
@@ -204,10 +205,10 @@ function buildClipPicker(box, app) {
   const total = Math.max(1, Math.round((song.durationMs || 0) / 1000));
 
   box.append(
-    h('h2', { class: 'label' }, 'Clip start'),
-    h('p', { class: 'body' },
-      'Set this to the same place you start the clip in Instagram, so the ' +
-      'time on the slide matches the music.'),
+    bottle('Clip start', `${formatTime(song.clipStartSeconds)} / ${formatTime(total)}`),
+    h('p', { class: 'body body--tight' },
+      'Set this where you start the clip in Instagram, so the time on the ' +
+      'slide matches the music.'),
     sliderRow({
       label: 'Starts at',
       min: 0,
@@ -217,6 +218,8 @@ function buildClipPicker(box, app) {
       format: value => `${formatTime(value)} of ${formatTime(total)}`,
       onInput: value => {
         song.clipStartSeconds = value;
+        const reading = box.querySelector('.bottle__value');
+        if (reading) reading.textContent = `${formatTime(value)} / ${formatTime(total)}`;
         app.save();
       },
     }),
