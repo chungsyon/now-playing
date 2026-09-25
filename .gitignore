@@ -1,0 +1,11 @@
+.DS_Store
+node_modules/
+*.log
+
+# Never commit album art, photos or any test exports.
+*.mp4
+*.mov
+*.jpg
+*.jpeg
+*.png
+!assets/icons/*.png

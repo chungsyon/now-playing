@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- viewport-fit=cover lets us use the safe-area insets on an iPhone -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Export test — Now Playing</title>
+<style>
+  /* Darkroom palette, same custom properties the real app will use. */
+  :root {
+    --bg: #141312;
+    --surface: #1E1C1A;
+    --surface-2: #2A2724;
+    --border: #3A3632;
+    --text: #F3EFE9;
+    --muted: #A8A097;
+    --accent: #F2A65A;
+    --on-accent: #1A1410;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  main { max-width: 440px; margin: 0 auto; }
+
+  h1 { font-size: 22px; margin: 0 0 4px; font-weight: 600; }
+  h2 { font-size: 13px; margin: 24px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  p  { margin: 0 0 12px; }
+  .muted { color: var(--muted); font-size: 14px; }
+
+  /* The canvas is really 1080x1350. CSS just shrinks it to fit the phone. */
+  #stage {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  /* Every tap target is at least 44px tall. */
+  button, .linkbutton {
+    display: block;
+    width: 100%;
+    min-height: 48px;
+    margin: 8px 0;
+    padding: 12px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    font: inherit;
+    font-weight: 500;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    -webkit-appearance: none;
+  }
+  button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+
+  /* Progress bar */
+  #progress {
+    height: 8px;
+    margin: 12px 0 8px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    overflow: hidden;
+  }
+  #progressFill { height: 100%; width: 0%; background: var(--accent); transition: width .1s linear; }
+
+  #status { min-height: 1.5em; font-size: 14px; color: var(--muted); margin: 0 0 12px; }
+  #status.error { color: #FF8A73; }
+
+  /* The support checklist */
+  ul.checks { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+  ul.checks li { padding: 8px 0; border-bottom: 1px solid var(--border); display: flex; gap: 10px; }
+  ul.checks li span:first-child { width: 1.4em; flex: none; }
+  .yes { color: #7FD1A0; }
+  .no  { color: #FF8A73; }
+
+  video { width: 100%; border-radius: 12px; border: 1px solid var(--border); background: #000; display: block; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin: 12px 0;
+  }
+  .card strong { color: var(--accent); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>Export test</h1>
+  <p class="muted">Phase 0: prove we can render a spinning record frame by frame and save it as a silent MP4.</p>
+
+  <canvas id="stage" width="1080" height="1350" aria-label="Preview of the spinning record"></canvas>
+
+  <div id="progress" role="progressbar" aria-label="Render progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div id="progressFill"></div>
+  </div>
+  <p id="status">Ready.</p>
+
+  <button id="renderBtn" class="primary">Render 8-second loop</button>
+
+  <div id="resultBox" hidden>
+    <h2>Result</h2>
+    <video id="resultVideo" loop muted playsinline controls></video>
+    <p class="muted" id="resultInfo"></p>
+    <button id="saveBtn" class="primary">Save video</button>
+    <a id="downloadLink" class="linkbutton" download="now-playing-test.mp4">Download instead</a>
+  </div>
+
+  <h2>What this device supports</h2>
+  <ul class="checks" id="checks"></ul>
+
+  <div class="card">
+    <p class="muted" style="margin:0">
+      <strong>Loop maths.</strong> 8&nbsp;s &times; 30&nbsp;fps = 240 frames. The record turns
+      <strong>4 whole times</strong> over those 8&nbsp;s (30&nbsp;rpm), so the last frame lines up
+      exactly with the first and the loop has no visible jump.
+    </p>
+  </div>
+
+</main>
+
+<script type="module">
+// ---------------------------------------------------------------------------
+// Imports. Mediabunny is vendored in /vendor/ — nothing is fetched at runtime.
+// ---------------------------------------------------------------------------
+import {
+  Output,
+  Mp4OutputFormat,
+  BufferTarget,
+  CanvasSource,
+  Quality,
+  canEncodeVideo,
+} from '../vendor/mediabunny-1.59.1.min.mjs';
+
+// ---------------------------------------------------------------------------
+// Settings for this test
+// ---------------------------------------------------------------------------
+const WIDTH        = 1080;   // Instagram 4:5 portrait
+const HEIGHT       = 1350;
+const FPS          = 30;
+const LOOP_SECONDS = 8;
+const TURNS        = 4;      // whole turns per loop => seamless rotation
+const BITRATE      = 8_000_000; // ~8 Mbps
+
+const TOTAL_FRAMES = LOOP_SECONDS * FPS;   // 240
+
+// ---------------------------------------------------------------------------
+// Page elements
+// ---------------------------------------------------------------------------
+const stage        = document.getElementById('stage');
+const ctx          = stage.getContext('2d', { alpha: false });
+const progressBar  = document.getElementById('progress');
+const progressFill = document.getElementById('progressFill');
+const statusEl     = document.getElementById('status');
+const renderBtn    = document.getElementById('renderBtn');
+const resultBox    = document.getElementById('resultBox');
+const resultVideo  = document.getElementById('resultVideo');
+const resultInfo   = document.getElementById('resultInfo');
+const saveBtn      = document.getElementById('saveBtn');
+const downloadLink = document.getElementById('downloadLink');
+const checksEl     = document.getElementById('checks');
+
+function setStatus(text, isError = false) {
+  statusEl.textContent = text;
+  statusEl.classList.toggle('error', isError);
+}
+
+function setProgress(fraction) {
+  const pct = Math.round(fraction * 100);
+  progressFill.style.width = pct + '%';
+  progressBar.setAttribute('aria-valuenow', String(pct));
+}
+
+// ===========================================================================
+// 1. THE DRAWING — one pure function, called with a time in seconds.
+//    Given the same t you always get the same picture. That is what makes the
+//    export deterministic instead of a screen recording.
+// ===========================================================================
+function drawFrame(ctx, t, width, height) {
+  const loopPosition = (t % LOOP_SECONDS) / LOOP_SECONDS; // 0 -> 1 across the loop
+  const angle = loopPosition * TURNS * Math.PI * 2;       // radians
+
+  // --- Coloured background -------------------------------------------------
+  ctx.fillStyle = '#141312';
+  ctx.fillRect(0, 0, width, height);
+
+  // A soft warm glow behind the record so the background reads as "coloured".
+  const glow = ctx.createRadialGradient(
+    width * 0.5, height * 0.46, 0,
+    width * 0.5, height * 0.46, width * 0.75
+  );
+  glow.addColorStop(0,    'rgba(242, 166, 90, 0.20)');
+  glow.addColorStop(0.55, 'rgba(242, 166, 90, 0.05)');
+  glow.addColorStop(1,    'rgba(242, 166, 90, 0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, width, height);
+
+  // --- Geometry ------------------------------------------------------------
+  const cx = width / 2;
+  const cy = height * 0.46;
+  const R  = width * 0.39;        // outer radius of the record
+  const labelR = R * 0.36;        // the paper label in the middle
+  const holeR  = R * 0.035;       // spindle hole
+
+  // --- The record, drawn in a rotated coordinate system ---------------------
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+
+  // Black vinyl body
+  const body = ctx.createRadialGradient(0, 0, labelR * 0.8, 0, 0, R);
+  body.addColorStop(0,   '#1A1A1A');
+  body.addColorStop(0.7, '#121212');
+  body.addColorStop(1,   '#080808');
+  ctx.beginPath();
+  ctx.arc(0, 0, R, 0, Math.PI * 2);
+  ctx.fillStyle = body;
+  ctx.fill();
+
+  // Grooves: thin concentric rings. Alternating brightness reads as texture.
+  ctx.lineWidth = 1.4;
+  for (let r = labelR + 10; r < R - 6; r += 5) {
+    const bright = (Math.round(r) % 10 < 5) ? 0.055 : 0.02;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255,255,255,${bright})`;
+    ctx.stroke();
+  }
+
+  // The lead-out: one radial scratch. Because it is off-centre it makes the
+  // rotation visible — perfect rings on their own would look motionless.
+  ctx.beginPath();
+  ctx.moveTo(labelR + 12, 0);
+  ctx.lineTo(R - 8, 0);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+  ctx.stroke();
+
+  // Coloured centre label
+  ctx.beginPath();
+  ctx.arc(0, 0, labelR, 0, Math.PI * 2);
+  ctx.fillStyle = '#F2A65A';
+  ctx.fill();
+
+  // Two darker rings printed on the label
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(26,20,16,0.35)';
+  ctx.beginPath();
+  ctx.arc(0, 0, labelR * 0.78, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0, labelR * 0.52, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // A tick mark on the label — another way to see it turning.
+  ctx.beginPath();
+  ctx.moveTo(labelR * 0.54, 0);
+  ctx.lineTo(labelR * 0.92, 0);
+  ctx.lineWidth = 8;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = 'rgba(26,20,16,0.75)';
+  ctx.stroke();
+
+  // Spindle hole
+  ctx.beginPath();
+  ctx.arc(0, 0, holeR, 0, Math.PI * 2);
+  ctx.fillStyle = '#141312';
+  ctx.fill();
+
+  ctx.restore();
+
+  // --- Fixed sheen ---------------------------------------------------------
+  // The light source does not rotate with the record, so this is drawn after
+  // ctx.restore(). It is clipped to the record so it does not spill outside.
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.clip();
+  const sheen = ctx.createLinearGradient(cx - R, cy - R, cx + R, cy + R);
+  sheen.addColorStop(0.00, 'rgba(255,255,255,0)');
+  sheen.addColorStop(0.32, 'rgba(255,255,255,0.045)');
+  sheen.addColorStop(0.42, 'rgba(255,255,255,0)');
+  sheen.addColorStop(0.68, 'rgba(255,255,255,0)');
+  sheen.addColorStop(0.78, 'rgba(255,255,255,0.03)');
+  sheen.addColorStop(1.00, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sheen;
+  ctx.fillRect(cx - R, cy - R, R * 2, R * 2);
+  ctx.restore();
+
+  // --- Caption, so a saved frame is obviously from this test ---------------
+  ctx.fillStyle = '#F3EFE9';
+  ctx.font = '600 40px -apple-system, system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('NOW PLAYING', cx, height * 0.88);
+  ctx.fillStyle = '#A8A097';
+  ctx.font = '30px -apple-system, system-ui, sans-serif';
+  ctx.fillText('export test · silent loop', cx, height * 0.88 + 46);
+}
+
+// Let the browser paint. Rendering 240 frames in a tight loop would freeze the
+// page, so we hand control back every few frames.
+const yieldToBrowser = () => new Promise(resolve => setTimeout(resolve, 0));
+
+// ===========================================================================
+// 2a. THE GOOD PATH — WebCodecs VideoEncoder + Mediabunny MP4 muxer
+// ===========================================================================
+async function renderWithWebCodecs(onProgress) {
+  const output = new Output({
+    // 'in-memory' puts the index (moov) at the front of the file, which is what
+    // Photos and Instagram want to see.
+    format: new Mp4OutputFormat({ fastStart: 'in-memory' }),
+    target: new BufferTarget(),
+  });
+
+  const source = new CanvasSource(stage, {
+    codec: 'avc',                      // H.264
+    quality: new Quality(BITRATE),
+    keyFrameInterval: 2,
+  });
+
+  // Only a video track is ever added, so the file physically cannot have audio.
+  output.addVideoTrack(source, { frameRate: FPS });
+  await output.start();
+
+  for (let i = 0; i < TOTAL_FRAMES; i++) {
+    const t = i / FPS;
+    drawFrame(ctx, t, WIDTH, HEIGHT);
+    await source.add(t, 1 / FPS);      // awaiting respects encoder backpressure
+    onProgress((i + 1) / TOTAL_FRAMES);
+    if (i % 6 === 0) await yieldToBrowser();
+  }
+
+  source.close();
+  await output.finalize();
+
+  return {
+    blob: new Blob([output.target.buffer], { type: 'video/mp4' }),
+    extension: 'mp4',
+    path: 'WebCodecs + Mediabunny',
+  };
+}
+
+// ===========================================================================
+// 2b. THE FALLBACK — MediaRecorder on a canvas stream.
+//     Real time, so it is not frame-exact. Only used if VideoEncoder is missing.
+// ===========================================================================
+async function renderWithMediaRecorder(onProgress) {
+  const candidates = [
+    'video/mp4;codecs=avc1.42E01E',
+    'video/mp4',
+    'video/webm;codecs=h264',
+    'video/webm;codecs=vp9',
+    'video/webm',
+  ];
+  const mimeType = candidates.find(type => MediaRecorder.isTypeSupported(type));
+  if (!mimeType) throw new Error('MediaRecorder cannot record video on this browser.');
+
+  const stream = stage.captureStream(FPS);
+  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: BITRATE });
+  const chunks = [];
+  recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+  const stopped = new Promise(resolve => { recorder.onstop = resolve; });
+
+  recorder.start();
+  const startedAt = performance.now();
+
+  // Driven by a timer rather than requestAnimationFrame: rAF stops firing when
+  // the tab is hidden, which would leave the recording hanging forever if the
+  // phone screen locked halfway through.
+  await new Promise(resolve => {
+    function tick() {
+      const elapsed = (performance.now() - startedAt) / 1000;
+      if (elapsed >= LOOP_SECONDS) { resolve(); return; }
+      drawFrame(ctx, elapsed, WIDTH, HEIGHT);
+      onProgress(elapsed / LOOP_SECONDS);
+      setTimeout(tick, 1000 / FPS);
+    }
+    tick();
+  });
+
+  recorder.stop();
+  await stopped;
+  stream.getTracks().forEach(track => track.stop());
+
+  const container = mimeType.split(';')[0];
+  return {
+    blob: new Blob(chunks, { type: container }),
+    extension: container === 'video/mp4' ? 'mp4' : 'webm',
+    path: `MediaRecorder fallback (${mimeType})`,
+  };
+}
+
+// ===========================================================================
+// 3. Which path can this device use?
+// ===========================================================================
+async function detectSupport() {
+  const hasVideoEncoder = typeof window.VideoEncoder === 'function';
+  let h264 = false;
+  if (hasVideoEncoder) {
+    try {
+      h264 = await canEncodeVideo('avc', { width: WIDTH, height: HEIGHT, quality: new Quality(BITRATE) });
+    } catch { h264 = false; }
+  }
+  const probeFile = new File([new Uint8Array([0])], 'probe.mp4', { type: 'video/mp4' });
+  const canShareFiles = !!(navigator.canShare && navigator.canShare({ files: [probeFile] }));
+
+  return {
+    secureContext: window.isSecureContext,
+    hasVideoEncoder,
+    h264,
+    canShareFiles,
+    hasMediaRecorder: typeof window.MediaRecorder === 'function',
+  };
+}
+
+function renderChecklist(support) {
+  const rows = [
+    ['Secure context (https)',        support.secureContext,   'WebCodecs only works over https or on localhost.'],
+    ['WebCodecs VideoEncoder',        support.hasVideoEncoder, 'The frame-by-frame encoder.'],
+    ['H.264 at 1080×1350',            support.h264,            'The codec Instagram accepts.'],
+    ['Share sheet with files',        support.canShareFiles,   'Needed for "Save Video" straight to Photos.'],
+    ['MediaRecorder (fallback)',      support.hasMediaRecorder,'Backup path if WebCodecs is missing.'],
+  ];
+  checksEl.innerHTML = '';
+  for (const [label, ok, note] of rows) {
+    const li = document.createElement('li');
+    li.innerHTML =
+      `<span class="${ok ? 'yes' : 'no'}">${ok ? '✓' : '✕'}</span>` +
+      `<span><strong>${label}</strong><br><span class="muted">${note}</span></span>`;
+    checksEl.appendChild(li);
+  }
+}
+
+// ===========================================================================
+// 4. Wiring it all up
+// ===========================================================================
+let lastResult = null;
+
+// Draw frame 0 immediately so the page is not blank.
+drawFrame(ctx, 0, WIDTH, HEIGHT);
+
+const support = await detectSupport();
+renderChecklist(support);
+
+if (!support.secureContext) {
+  setStatus('This page is not on https, so WebCodecs is blocked. Open it over https.', true);
+}
+
+renderBtn.addEventListener('click', async () => {
+  renderBtn.disabled = true;
+  resultBox.hidden = true;
+  if (lastResult) { URL.revokeObjectURL(lastResult.url); lastResult = null; }
+  setProgress(0);
+
+  // Add ?fallback=1 to the URL to force the MediaRecorder path, so you can
+  // compare the two on the same phone.
+  const forceFallback = new URLSearchParams(location.search).has('fallback');
+  const useWebCodecs = support.hasVideoEncoder && support.h264 && !forceFallback;
+  setStatus(useWebCodecs
+    ? 'Rendering 240 frames with WebCodecs…'
+    : 'WebCodecs unavailable — using the MediaRecorder fallback…');
+
+  const startedAt = performance.now();
+  try {
+    const result = useWebCodecs
+      ? await renderWithWebCodecs(setProgress)
+      : await renderWithMediaRecorder(setProgress);
+
+    const seconds = ((performance.now() - startedAt) / 1000).toFixed(1);
+    const megabytes = (result.blob.size / 1024 / 1024).toFixed(2);
+
+    lastResult = { ...result, url: URL.createObjectURL(result.blob) };
+    resultVideo.src = lastResult.url;
+    downloadLink.href = lastResult.url;
+    downloadLink.download = `now-playing-test.${result.extension}`;
+    resultInfo.innerHTML =
+      `Path used: <strong>${result.path}</strong><br>` +
+      `${WIDTH}×${HEIGHT} · ${FPS} fps · ${LOOP_SECONDS}s · ${megabytes} MB · Audio: none<br>` +
+      `Rendered in ${seconds}s.`;
+    resultBox.hidden = false;
+    setProgress(1);
+    setStatus('Done. Tap "Save video" to open the share sheet.');
+    // If this browser cannot play the file back it does not mean the render
+    // failed — save it and check it in Photos instead.
+    resultVideo.onerror = () => setStatus(
+      'Rendered fine, but this browser cannot preview the file. Save it and check it in Photos.');
+    resultVideo.play().catch(() => {});
+  } catch (error) {
+    console.error(error);
+    setStatus('Render failed: ' + error.message, true);
+  } finally {
+    renderBtn.disabled = false;
+  }
+});
+
+// The share sheet must be opened by a fresh tap. That is why saving is its own
+// button rather than something that happens automatically after rendering —
+// iOS drops the permission to share while the long render is running.
+saveBtn.addEventListener('click', async () => {
+  if (!lastResult) return;
+  const file = new File([lastResult.blob], `now-playing-test.${lastResult.extension}`, {
+    type: lastResult.blob.type,
+  });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      setStatus('Shared. Choose "Save Video" to put it in Photos.');
+      return;
+    } catch (error) {
+      if (error.name === 'AbortError') return;   // the user tapped Cancel
+      setStatus('Share failed: ' + error.message + ' — use the download link.', true);
+      return;
+    }
+  }
+  setStatus('This browser cannot share files. Use the download link below.', true);
+  downloadLink.click();
+});
+</script>
+</body>
+</html>
