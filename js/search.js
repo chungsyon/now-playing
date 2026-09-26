@@ -22,8 +22,10 @@
 import * as apple from './itunes.js';
 import * as deezer from './deezer.js';
 import { getCountry } from './itunes.js';
+import { parseMusicLink } from './links.js';
 
-export { getCountry, setCountry, parseAppleMusicLink } from './itunes.js';
+export { getCountry, setCountry } from './itunes.js';
+export { parseMusicLink } from './links.js';
 
 /**
  * What the words you typed are matched against.
@@ -166,14 +168,16 @@ async function tryEach(promises) {
 export async function searchSongs(term, { scope = getScope() } = {}) {
   const trimmed = (term || '').trim();
   const country = getCountry();
-  const empty = { songs: [], artistName: null, noMatch: false, searchedCountry: country, fellBack: false };
+  const empty = {
+    songs: [], artistName: null, label: null, noMatch: false,
+    unsupported: null, linkFailed: false,
+    searchedCountry: country, fellBack: false,
+  };
   if (!trimmed) return empty;
 
-  const linkId = apple.parseAppleMusicLink(trimmed);
-  if (linkId) {
-    const one = await apple.lookupById(linkId);
-    return { ...empty, songs: one ? [withTag(one)] : [] };
-  }
+  // A pasted address is answered directly rather than searched for.
+  const link = parseMusicLink(trimmed);
+  if (link) return { ...empty, ...(await openLink(link)) };
 
   const found = scope === 'artist'
     ? await gatherByArtist(trimmed, country)
@@ -191,6 +195,39 @@ export async function searchSongs(term, { scope = getScope() } = {}) {
   }
 
   return { ...found, searchedCountry: country, fellBack: false };
+}
+
+/**
+ * Open what a pasted address points at. A single track comes back on its own;
+ * an album or a performer comes back as a list to choose from, with the album
+ * or performer named in the heading.
+ */
+async function openLink(link, country = getCountry()) {
+  if (link.unsupported) {
+    return { songs: [], unsupported: link.unsupported };
+  }
+
+  try {
+    if (link.source === 'itunes') {
+      if (link.kind === 'track') {
+        const one = await apple.lookupById(link.id, country);
+        return { songs: one ? [withTag(one)] : [], label: one ? null : undefined };
+      }
+      const { songs, label } = await apple.tracksById(link.id, country);
+      return { songs: songs.map(withTag), label };
+    }
+
+    if (link.kind === 'track') {
+      const one = await deezer.trackById(link.id);
+      return { songs: one ? [withTag(one)] : [] };
+    }
+    const from = link.kind === 'album'
+      ? await deezer.tracksFromAlbum(link.id)
+      : await deezer.tracksFromArtistId(link.id);
+    return { songs: from.songs.map(withTag), label: from.label };
+  } catch (error) {
+    return { songs: [], linkFailed: true };
+  }
 }
 
 async function gatherEverything(term, country) {

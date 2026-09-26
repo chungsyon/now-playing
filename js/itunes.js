@@ -85,11 +85,17 @@ export async function lookupById(id, country = getCountry()) {
   return first ? normalise(first) : null;
 }
 
-/** Pull the track id out of a pasted Apple Music link. */
-export function parseAppleMusicLink(text) {
-  if (!/music\.apple\.com/i.test(text)) return null;
-  const byQuery = text.match(/[?&]i=(\d+)/);
-  if (byQuery) return byQuery[1];
-  const bySegment = text.match(/\/(\d{6,})(?:[/?#]|$)/);
-  return bySegment ? bySegment[1] : null;
+/**
+ * Everything on an album, or everything by a performer, from its id.
+ * Apple answers both with the same call; the first row that comes back
+ * describes the album or the artist rather than a track, so it is dropped.
+ */
+export async function tracksById(id, country = getCountry()) {
+  const data = await call('/lookup', { id, entity: 'song', limit: 60, country });
+  const rows = data.results || [];
+  const owner = rows.find(r => r.wrapperType !== 'track');
+  return {
+    songs: rows.filter(r => r.wrapperType === 'track' && usable(r)).map(normalise),
+    label: owner ? (owner.collectionName || owner.artistName || null) : null,
+  };
 }

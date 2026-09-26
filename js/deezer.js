@@ -51,6 +51,44 @@ export async function searchTracks(term) {
  * Find the performer, then ask for their most played tracks. Deezer handles
  * Korean artist names too: 뉴진스 finds NewJeans.
  */
+/** One track, by id. Deezer gives a release date here, which search does not. */
+export async function trackById(id) {
+  const track = await call(`/track/${id}`, {});
+  if (!usable(track)) return null;
+  const song = normalise(track);
+  song.year = (track.release_date || '').slice(0, 4);
+  return song;
+}
+
+/** Everything on an album. */
+export async function tracksFromAlbum(id) {
+  const album = await call(`/album/${id}`, {});
+  const rows = (album.tracks && album.tracks.data) || [];
+  const year = (album.release_date || '').slice(0, 4);
+  return {
+    // Tracks listed inside an album carry no album block of their own, so the
+    // cover and title are taken from the album around them.
+    songs: rows.filter(usable).map(track => {
+      const song = normalise({ ...track, album });
+      song.year = year;
+      return song;
+    }),
+    label: album.title || null,
+  };
+}
+
+/** Everything by a performer, from their id. */
+export async function tracksFromArtistId(id) {
+  const [artist, top] = await Promise.all([
+    call(`/artist/${id}`, {}),
+    call(`/artist/${id}/top`, { limit: 50 }),
+  ]);
+  return {
+    songs: (top.data || []).filter(usable).map(normalise),
+    label: artist.name || null,
+  };
+}
+
 export async function searchArtistTracks(term) {
   const found = await call('/search/artist', { q: term, limit: 5 });
   const artist = (found.data || [])[0];

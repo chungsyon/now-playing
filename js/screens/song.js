@@ -18,7 +18,7 @@
 import { h, clear, icon, sliderRow, segmented, emptyState, toast, titleCard, bottle } from '../ui.js';
 import { formatTime } from '../model.js';
 import {
-  searchSongs, fetchCoverBlob, parseAppleMusicLink,
+  searchSongs, fetchCoverBlob, parseMusicLink,
   getCountry, setCountry, getScope, setScope, SCOPES,
 } from '../search.js';
 
@@ -31,7 +31,10 @@ export async function enter(root, app) {
 
   let results = [];
   let artistName = null;
+  let label = null;
   let noMatch = false;
+  let unsupported = null;
+  let linkFailed = false;
   let notice = '';
   let searching = false;
   let runId = 0;
@@ -41,7 +44,7 @@ export async function enter(root, app) {
     class: 'input',
     type: 'search',
     enterkeyhint: 'search',
-    placeholder: 'Song, artist, or an Apple Music link',
+    placeholder: 'Song, artist, or a pasted link',
     'aria-label': 'Search for a song',
     value: app.state.lastQuery || '',
   });
@@ -65,7 +68,10 @@ export async function enter(root, app) {
     if (!term) {
       results = [];
       artistName = null;
+      label = null;
       noMatch = false;
+      unsupported = null;
+      linkFailed = false;
       notice = '';
       searching = false;
       paint();
@@ -80,7 +86,10 @@ export async function enter(root, app) {
       if (mine !== runId) return;
       results = found.songs;
       artistName = found.artistName;
+      label = found.label || null;
       noMatch = found.noMatch;
+      unsupported = found.unsupported || null;
+      linkFailed = found.linkFailed || false;
       notice = found.fellBack
         ? `The ${getCountry()} store had nothing, so this is the US store.`
         : '';
@@ -88,7 +97,10 @@ export async function enter(root, app) {
       if (mine !== runId) return;
       results = [];
       artistName = null;
+      label = null;
       noMatch = false;
+      unsupported = null;
+      linkFailed = false;
       notice = error.message === 'offline'
         ? 'No connection. Song search needs one; everything else works offline.'
         : 'Something didn\'t come through. Try once more.';
@@ -116,7 +128,9 @@ export async function enter(root, app) {
     clear(stage);
     const chosen = project.song.title && !app.state.browsing;
     if (chosen) paintChosen(stage, app, { onSearchAgain: () => { app.state.browsing = true; paint(); } });
-    else paintChoosing(stage, app, { results, artistName, noMatch, notice, searching, onPick: pick });
+    else paintChoosing(stage, app, {
+      results, artistName, label, noMatch, unsupported, linkFailed, notice, searching, onPick: pick,
+    });
     paintSettings(stage, app, search);
   }
 
@@ -173,30 +187,44 @@ function songLine(song) {
 // Choosing
 // ---------------------------------------------------------------------------
 
-function paintChoosing(stage, app, { results, artistName, noMatch, notice, searching, onPick }) {
-  // In artist mode the heading names whose catalogue this is, because the
-  // performer found may not be the one you had in mind.
+function paintChoosing(stage, app, {
+  results, artistName, label, noMatch, unsupported, linkFailed, notice, searching, onPick,
+}) {
+  // The heading names the album or performer a pasted link opened, or whose
+  // catalogue an artist search found, because it may not be the one you meant.
   const reading = searching ? ''
-    : artistName ? artistName
-    : results.length ? `${String(results.length).padStart(2, '0')} found`
-    : '';
+    : label || artistName
+    || (results.length ? `${String(results.length).padStart(2, '0')} found` : '');
   const head = bottle('Results', reading);
   stage.append(h('div', { class: 'stack', style: { gap: '10px' } },
     head,
     searching ? h('div', { class: 'developing' }) : null,
     notice ? h('p', { class: 'body body--tight' }, notice) : null,
-    buildResults(results, searching, noMatch, app, onPick),
+    buildResults(results, { searching, noMatch, unsupported, linkFailed }, app, onPick),
   ));
 }
 
-function buildResults(results, searching, noMatch, app, onPick) {
+function buildResults(results, state, app, onPick) {
+  const { searching, noMatch, unsupported, linkFailed } = state;
   if (results.length === 0) {
     if (searching) return h('div');
     const term = (app.state.lastQuery || '').trim();
     if (!term) {
-      return emptyState('Type a song or an artist. Korean and any other script work fine.');
+      return emptyState('Type a song or an artist, or paste a link. '
+        + 'Korean and any other script work fine.');
     }
-    if (parseAppleMusicLink(term)) {
+    if (unsupported) {
+      return h('div', { class: 'stack', style: { gap: '10px' } },
+        emptyState(`${unsupported} links cannot be opened here.`),
+        h('p', { class: 'body body--tight' },
+          'Apple Music and Deezer links work. For anything else, type the song '
+          + 'and the artist instead.'),
+      );
+    }
+    if (linkFailed) {
+      return emptyState('That link did not lead anywhere. Try the song name instead.');
+    }
+    if (parseMusicLink(term)) {
       return emptyState('That link did not lead anywhere. Try the song name instead.');
     }
     if (noMatch) {

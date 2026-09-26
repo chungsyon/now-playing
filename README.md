@@ -110,6 +110,7 @@ js/search.js            asks both catalogues, merges and scores the answers
 js/itunes.js            the Apple catalogue
 js/deezer.js            the Deezer catalogue
 js/net.js               fetch and JSONP, shared by both
+js/links.js             works out what a pasted address points at
 js/export.js            frames to a silent MP4
 js/ui.js                small helpers shared by the screens
 js/screens/*.js         one file per screen
@@ -274,6 +275,27 @@ the other, because either alone gets a case wrong: 뉴진스 turns up a single
 cover version by name while Apple quietly has the whole NewJeans catalogue
 filed under a name that matches nothing.
 
+**Pasted links open directly.** The search box takes an address as readily as
+it takes words. Apple and Deezer both put the kind of thing and its number in
+the address itself, so no request is needed to tell an album from a track:
+
+| paste | what happens |
+|---|---|
+| `music.apple.com/.../album/x/893175779?i=893175788` | that one track |
+| `music.apple.com/.../song/archangel/893175788` | that one track |
+| `music.apple.com/.../album/untrue/893175779` | all 13 tracks, headed *Untrue* |
+| `music.apple.com/.../artist/burial/468355684` | that performer's tracks |
+| `deezer.com/track/80546728` | that one track |
+| `deezer.com/album/8045388` | the album's tracks |
+| `deezer.com/artist/2810121` | that performer's tracks |
+| Spotify or YouTube | says plainly that it cannot open them |
+
+Korean links work the same way; a `kr` locale in the address changes nothing.
+Spotify cannot be resolved without an account and a server, so rather than
+failing quietly the app names the service and suggests typing the song instead.
+Shortened `link.deezer.com` addresses redirect, which a browser is not allowed
+to follow across sites, so those are named too.
+
 **YouTube Music was considered and ruled out.** There is no official YouTube
 Music API. The YouTube Data API would need a key, which in a site with no
 server is public and abusable, and its default quota is **100 `search.list`
@@ -317,6 +339,10 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.5.1** - Pasted links open directly. An Apple Music or Deezer address for
+  a track opens that track; for an album or a performer it opens the list to
+  choose from, named in the heading. Spotify and YouTube links are named rather
+  than failing quietly.
 - **0.5.0** - Deezer added as a second catalogue alongside Apple, because
   neither one alone handles Korean: Deezer indexes Korean song titles, Apple
   knows Korean artist names. Both are asked at once and the answers scored by
