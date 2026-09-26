@@ -25,7 +25,17 @@
  *   { unsupported: '...' }          a link we can name but not open
  */
 export function parseMusicLink(text) {
-  const trimmed = (text || '').trim();
+  // A share sheet rarely hands over a bare address. It usually pastes the
+  // song's name, or a line of its own, with the address somewhere inside:
+  //
+  //   Something About You\nhttps://music.youtube.com/watch?v=...
+  //
+  // So the address is taken out of whatever came with it. A trailing full
+  // stop or bracket belongs to the sentence, not the address.
+  const raw = (text || '').trim();
+  const inside = raw.match(/(?:https?:\/\/|spotify:)\S+/i);
+  const trimmed = inside ? inside[0].replace(/[.,;:)\]}>'"]+$/, '') : raw;
+
   if (!/^https?:\/\//i.test(trimmed) && !/(music\.apple|deezer|spotify|youtu)/i.test(trimmed)) {
     return null;
   }

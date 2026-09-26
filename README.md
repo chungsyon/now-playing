@@ -355,6 +355,9 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.6.1** - A pasted link is found inside whatever came with it. A share
+  sheet usually hands over the song's name and the address together, and the
+  address on its own was the only shape that worked before.
 - **0.6.0** - Spotify and YouTube links open too, through their keyless oEmbed
   endpoints: the link is resolved to a name and that name searched in the two
   catalogues that carry lengths and covers. YouTube Music, youtu.be and Shorts
