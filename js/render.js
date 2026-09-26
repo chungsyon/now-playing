@@ -9,7 +9,8 @@
  * How a frame is built:
  *   1. fill the stage with the room colour
  *   2. for each visible layer, draw it alone onto a scratch canvas
- *   3. run that scratch canvas through the layer's effects (WebGL)
+ *   3. run that scratch canvas through the layer's effects (blur on the 2D
+ *      canvas, the rest in WebGL)
  *   4. composite the result onto the stage
  *
  * Drawing a layer on its own is what makes per-layer effects possible, and it
@@ -225,6 +226,7 @@ export class Stage {
     this.layerCtx = this.layerCanvas.getContext('2d');
 
     this.effects = new EffectGL(width, height);
+    this.blurCanvas = null;
   }
 
   /** Clear the scratch canvas and hand back its context. */
@@ -234,14 +236,59 @@ export class Stage {
     return this.layerCtx;
   }
 
-  /** Whichever canvas holds the finished layer: the scratch one, or the GL one. */
+  /**
+   * The browser's own gaussian, on a scratch canvas of the same size.
+   *
+   * `pixels` is in this stage's pixels, so the caller converts from the
+   * stored radius first. Anything smaller than half a pixel is not a blur.
+   */
+  blurred(source, pixels) {
+    if (!(pixels >= 0.5)) return source;
+    // Safari only learned this in 17. On anything older the layer is drawn
+    // sharp rather than wrong, and nothing else about the slide changes.
+    if (!('filter' in this.layerCtx)) return source;
+    if (!this.blurCanvas) {
+      this.blurCanvas = document.createElement('canvas');
+      this.blurCanvas.width = this.width;
+      this.blurCanvas.height = this.height;
+      this.blurCtx = this.blurCanvas.getContext('2d');
+    }
+    const c = this.blurCtx;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.filter = 'none';
+    c.clearRect(0, 0, this.width, this.height);
+    c.filter = `blur(${pixels}px)`;
+    c.drawImage(source, 0, 0);
+    c.filter = 'none';
+    return this.blurCanvas;
+  }
+
+  /**
+   * Whichever canvas holds the finished layer.
+   *
+   * Blur runs first and on the 2D canvas; everything else runs after it, on
+   * the GPU. That is also the order that makes sense: film grain belongs on
+   * top of a blurred photo, not underneath it where the blur would wipe it.
+   */
   applyEffects(chain, t) {
-    if (!chain || chain.length === 0 || !this.effects.ok) return this.layerCanvas;
+    if (!chain || chain.length === 0) return this.layerCanvas;
+
+    // Two blurs on one layer add up as the squares of their radii, the same
+    // way two gaussians do. One blur is the case that actually happens.
+    const radii = chain
+      .filter(effect => effect.type === 'blur')
+      .map(effect => withDefaults(effect).params.radius || 0);
+    let source = radii.length
+      ? this.blurred(this.layerCanvas, (Math.hypot(...radii) * this.width) / 1000)
+      : this.layerCanvas;
+
+    const shaders = chain.filter(effect => effect.type !== 'blur');
+    if (shaders.length === 0 || !this.effects.ok) return source;
     try {
-      return this.effects.run(this.layerCanvas, chain, t) ? this.effects.canvas : this.layerCanvas;
+      return this.effects.run(source, shaders, t) ? this.effects.canvas : source;
     } catch (error) {
       console.warn('Effect failed, drawing the layer plain:', error);
-      return this.layerCanvas;
+      return source;
     }
   }
 

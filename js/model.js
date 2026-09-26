@@ -27,7 +27,10 @@ export const ASPECTS = [
 ];
 
 export const LOOP_MIN = 6;
-export const LOOP_MAX = 15;
+// Ninety seconds is where Instagram stops taking a video, so it is where the
+// slider stops too. A loop that long is a big file: see the note on the
+// Export screen.
+export const LOOP_MAX = 90;
 
 // ---------------------------------------------------------------------------
 // Animatable values
@@ -224,6 +227,7 @@ export function createProject({ aspect, template = 'vinyl', song = null } = {}) 
     loopSeconds: 8,
     template,
     showCover: true,
+    grouped: true,          // the furniture moves as one arrangement
     palette: [],            // colours pulled from the cover or the photo
     layers: TEMPLATES[template].build(),
   };
@@ -241,6 +245,31 @@ export function applyTemplate(project, templateId) {
 
 export function findLayer(project, id) {
   return project.layers.find(layer => layer.id === id) || null;
+}
+
+/**
+ * WHAT MOVES TOGETHER
+ * -------------------
+ * The cover, the words, the bar and the buttons are one arrangement, not five
+ * loose pieces. Spacing them by hand and then nudging one of them out of line
+ * is the easiest way to spoil a slide, so by default dragging any of them
+ * drags all of them and the spacing you set stays set.
+ *
+ * Two ways out, both the user's: turn grouping off for the project, or lock
+ * the one layer you want to leave where it is. A locked layer is not in the
+ * group and is not picked up by a finger either.
+ *
+ * The photo never joins. It is the background, and it is sized to fill.
+ */
+export function movesWith(project, layer) {
+  if (!layer) return [];
+  // Older drafts have no flag. Grouping is the default, so only an explicit
+  // false turns it off.
+  const grouped = project.grouped !== false;
+  if (!grouped || layer.type === 'photo') return [layer];
+  return project.layers.filter(
+    other => other.type !== 'photo' && !other.locked && other.visible,
+  );
 }
 
 /**

@@ -136,7 +136,23 @@ you line up on a 343px preview is exactly what lands in a 1080px file.
 
 **4. An effect registry.** Adding an effect means adding one entry to
 `js/effects.js` with a name, its slider definitions and a fragment shader. The
-Effects panel builds its sliders from that entry; nothing else changes.
+Effects panel builds its sliders from that entry; nothing else changes. Blur is
+the one entry with no shader: see the note on blur further down.
+
+**4a. The furniture moves as one.** `movesWith(project, layer)` in
+`js/model.js` answers what a gesture picks up. By default that is every
+unlocked, visible layer except the photo, so dragging the cover drags the
+words, the bar and the buttons with it and the spacing you set stays set. A
+pinch or a twist works on the whole arrangement, about its middle. Two ways
+out: turn grouping off in the Layers panel, or lock the one layer you want to
+leave behind.
+
+**4b. Gestures snap.** The last little bit of every gesture is done for you: a
+position lands on the middle of the slide or on anything standing still
+(within 1.4% of the slide), and a tilt lands on a multiple of 15 degrees
+(within 4). Guides are drawn on the overlay canvas while a finger is down, so
+they never reach the file. `pullTo`, `pullAngle` and `placeMembers` in
+`js/gestures.js` are the whole of it, and `js/gestures.test.mjs` checks them.
 
 **5. Local-first saving.** Drafts autosave to IndexedDB, photo and cover
 included. A style is the same project with the photo and song stripped out.
@@ -189,10 +205,23 @@ index at the front of the file for us, and works out the H.264 decoder
 configuration from the encoder automatically.
 
 **Rendering: hand-written WebGL, not PixiJS.** Pixi's ES-module build is about
-400KB of someone else's code, and you said you want to read every file. The
-three effects plus the future corner-pin are roughly 150 lines of shader you
-can actually follow. `CanvasRenderingContext2D.filter` is deliberately not used
-anywhere; it is unreliable in Safari.
+400KB of someone else's code, and you said you want to read every file. Grain
+and vignette plus the future corner-pin are a few dozen lines of shader you can
+actually follow.
+
+**Blur is the exception: it uses the browser's own gaussian.** A five-tap
+shader blur only looks smooth over a few pixels. Stretched across a wide radius
+the taps sit too far apart and the original edges survive as ribbing: nine
+white bars blurred hard still read as nine bars. `ctx.filter = 'blur(...)'` is
+a real gaussian, smoother and cheaper, and Safari has had it since 17. Older
+Safari draws the layer sharp instead. Blur therefore runs first, on the 2D
+canvas, before the shader chain, which is also the order that makes sense:
+grain belongs on top of a blurred photo, not underneath where the blur would
+wipe it.
+
+**Blur radius is per 1000px of slide width, not in pixels.** The preview is
+drawn smaller than the export, so a radius in pixels would come out weaker in
+the file than it looked on screen.
 
 **Layers are drawn one at a time, then composited.** Each layer goes onto its
 own scratch canvas, runs through its own effect chain, and only then lands on
@@ -355,6 +384,13 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.7.0** - Four changes. The loop now runs up to 90 seconds instead of 15.
+  Gestures snap: to the middle of the slide, to anything standing still, and
+  to clean angles when tilting. The cover, the words, the bar and the buttons
+  move as one arrangement unless you turn that off or lock a layer. And blur
+  is the browser's own gaussian rather than a five-tap shader, so a blurred
+  background is smooth instead of ribbed, and is the same strength in the file
+  as it was in the preview.
 - **0.6.1** - A pasted link is found inside whatever came with it. A share
   sheet usually hands over the song's name and the address together, and the
   address on its own was the only shape that worked before.

@@ -24,29 +24,6 @@
  * channels together, and anything added must be scaled by alpha first.
  */
 
-const BLUR_FRAG = `
-precision mediump float;
-uniform sampler2D uTex;
-uniform vec2 uSize;
-uniform vec2 uDir;
-uniform float uRadius;
-varying vec2 vUv;
-
-void main() {
-  if (uRadius < 0.5) { gl_FragColor = texture2D(uTex, vUv); return; }
-  // uRadius is how far the blur reaches, in pixels. Dividing by the outermost
-  // tap offset puts that last sample exactly on the edge of the reach.
-  vec2 step = (uDir / uSize) * (uRadius / 3.2307692308);
-  // A five-tap gaussian. The odd offsets let the hardware average two pixels
-  // per sample, so five reads cover nine pixels.
-  vec4 sum  = texture2D(uTex, vUv) * 0.2270270270;
-  sum += texture2D(uTex, vUv + step * 1.3846153846) * 0.3162162162;
-  sum += texture2D(uTex, vUv - step * 1.3846153846) * 0.3162162162;
-  sum += texture2D(uTex, vUv + step * 3.2307692308) * 0.0702702703;
-  sum += texture2D(uTex, vUv - step * 3.2307692308) * 0.0702702703;
-  gl_FragColor = sum;
-}`;
-
 const GRAIN_FRAG = `
 precision mediump float;
 uniform sampler2D uTex;
@@ -86,25 +63,24 @@ void main() {
 }`;
 
 export const EFFECTS = {
+  /**
+   * Blur is the one effect that is not a shader.
+   *
+   * A five-tap gaussian only looks smooth over a few pixels. Stretched across
+   * a wide radius the taps sit too far apart and the original edges survive
+   * as ribbing: nine white bars blurred hard still read as nine bars. Canvas2D
+   * has a real gaussian built into the browser that does not do that, and it
+   * is cheaper as well, so blur is handed to it. See Stage.blurred.
+   *
+   * The radius is per 1000 pixels of slide width, not in pixels, because the
+   * preview is drawn smaller than the export and a blur measured in pixels
+   * would come out weaker in the file than it looked on screen.
+   */
   blur: {
     label: 'Blur',
+    byCanvas: true,
     params: {
       radius: { label: 'Radius', min: 0, max: 60, step: 1, default: 12 },
-    },
-    frag: BLUR_FRAG,
-    passes: v => {
-      if (v.radius < 0.5) return [];
-      // Five taps only look smooth over a short distance, so a wide blur is
-      // made by blurring a little, several times. Blurring n times widens the
-      // result by the square root of n, hence the division.
-      const rounds = Math.min(4, Math.max(1, Math.ceil(v.radius / 12)));
-      const reach = v.radius / Math.sqrt(rounds);
-      const out = [];
-      for (let i = 0; i < rounds; i++) {
-        out.push({ uDir: [1, 0], uRadius: reach });
-        out.push({ uDir: [0, 1], uRadius: reach });
-      }
-      return out;
     },
   },
 

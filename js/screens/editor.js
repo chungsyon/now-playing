@@ -9,11 +9,12 @@
 import { h, clear, icon, iconButton, sliderRow, segmented, toast, bottle, loopTimer } from '../ui.js';
 import {
   TEMPLATES, applyTemplate, valueAt, findLayer, formatTime,
-  actualRpm, LOOP_MIN, LOOP_MAX, LAYER_LABELS, toStyle,
+  actualRpm, LOOP_MIN, LOOP_MAX, LAYER_LABELS, toStyle, movesWith,
 } from '../model.js';
 import { EFFECTS, makeEffect } from '../effects.js';
 import { Stage, render } from '../render.js';
-import { attachGestures } from '../gestures.js';
+import { FPS } from '../export.js';
+import { attachGestures, layerBounds } from '../gestures.js';
 import { putStyle } from '../db.js';
 import { asRoomColour, dedupeHex } from '../color.js';
 
@@ -238,6 +239,9 @@ function drawSelection(app) {
   const layer = findLayer(app.state.project, app.state.selectedLayerId);
   if (!layer || layer.locked || !layer.visible) return;
 
+  drawGroupBox(app, layer);
+  drawGuides(app);
+
   const p = layer.props;
   const cx = valueAt(p.x, 0) * stage.width;
   const cy = valueAt(p.y, 0) * stage.height;
@@ -269,6 +273,78 @@ function drawSelection(app) {
     ctx.beginPath();
     ctx.arc((hx * w) / 2, (hy * h) / 2, handle, 0, Math.PI * 2);
     ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
+ * A faint box round everything that will move with this layer, so it is
+ * obvious before you touch it that the furniture travels as one piece.
+ * Only drawn when there is more than one thing in it.
+ */
+function drawGroupBox(app, layer) {
+  const members = movesWith(app.state.project, layer);
+  if (members.length < 2) return;
+
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const member of members) {
+    // The widest the box can be once turned: good enough for a hint.
+    const b = layerBounds(member, app.state.project, stage);
+    const reach = Math.max(b.w, b.h) / 2;
+    left = Math.min(left, b.cx - reach);
+    right = Math.max(right, b.cx + reach);
+    top = Math.min(top, b.cy - reach);
+    bottom = Math.max(bottom, b.cy + reach);
+  }
+
+  const ctx = overlayCtx;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(242, 166, 90, 0.34)';
+  ctx.lineWidth = Math.max(1, stage.width * 0.002);
+  ctx.strokeRect(left, top, right - left, bottom - top);
+  ctx.restore();
+}
+
+/** The lines a gesture has just snapped onto. They live only while it lasts. */
+function drawGuides(app) {
+  if (!gestures) return;
+  const on = gestures.snapped();
+  if (!on.x && !on.y && !on.rotation) return;
+
+  const ctx = overlayCtx;
+  const layer = findLayer(app.state.project, app.state.selectedLayerId);
+  ctx.save();
+  ctx.strokeStyle = '#F2A65A';
+  ctx.lineWidth = Math.max(1, stage.width * 0.003);
+
+  if (on.x) {
+    const x = valueAt(layer.props.x, 0) * stage.width;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, stage.height);
+    ctx.stroke();
+  }
+  if (on.y) {
+    const y = valueAt(layer.props.y, 0) * stage.height;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(stage.width, y);
+    ctx.stroke();
+  }
+  if (on.rotation) {
+    // The angle it landed on, written beside the layer.
+    const size = Math.max(11, stage.width * 0.035);
+    ctx.font = `${size}px ${'"DM Sans", system-ui, sans-serif'}`;
+    ctx.fillStyle = '#F2A65A';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      `${Math.round(valueAt(layer.props.rotation, 0))}\u00B0`,
+      valueAt(layer.props.x, 0) * stage.width,
+      valueAt(layer.props.y, 0) * stage.height - size,
+    );
   }
   ctx.restore();
 }
@@ -361,6 +437,27 @@ function layersTab(box, app) {
       icon(project.showCover ? 'eye' : 'eye-slash', { size: 'sm' }),
       project.showCover ? 'Cover is showing' : 'Cover is hidden, colours only',
     ),
+    h('div', { style: { height: '8px' } }),
+    h('button', {
+      class: 'btn btn--block',
+      type: 'button',
+      onclick: () => {
+        project.grouped = project.grouped === false;
+        app.save();
+        buildSheet(app);
+        drawOnce(app);
+      },
+    },
+      icon(project.grouped === false ? 'frame-corners' : 'stack-simple', { size: 'sm' }),
+      project.grouped === false
+        ? 'Each layer moves on its own'
+        : 'Cover, words and bar move as one',
+    ),
+    h('p', { class: 'body body--tight' },
+      project.grouped === false
+        ? 'Drag any layer and only that layer moves.'
+        : 'Drag any of them and the whole arrangement follows, keeping its '
+          + 'spacing. Lock one to leave it behind.'),
     h('div', { style: { height: '18px' } }),
     bottle('Layers', `${String(project.layers.length).padStart(2, '0')} total`),
   );
@@ -517,6 +614,16 @@ function animationTab(box, app) {
   const disc = project.layers.find(l => l.type === 'disc');
   const bar = project.layers.find(l => l.type === 'progressBar');
 
+  const loopNote = h('p', { class: 'body body--tight' });
+  const showLoopNote = () => {
+    const seconds = project.loopSeconds;
+    loopNote.textContent = seconds > 60
+      ? `${Math.round(seconds * FPS)} frames. Longer than a minute is a Reel, `
+        + 'not a carousel slide, and the file will be large.'
+      : `${Math.round(seconds * FPS)} frames at ${FPS} a second.`;
+  };
+  showLoopNote();
+
   box.append(
     bottle('Loop', `${project.loopSeconds.toFixed(1)}s`),
     sliderRow({
@@ -531,6 +638,7 @@ function animationTab(box, app) {
         drawOnce(app);
       },
     }),
+    loopNote,
   );
 
   if (disc) {
