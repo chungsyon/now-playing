@@ -111,6 +111,7 @@ js/itunes.js            the Apple catalogue
 js/deezer.js            the Deezer catalogue
 js/net.js               fetch and JSONP, shared by both
 js/links.js             works out what a pasted address points at
+js/oembed.js            asks Spotify and YouTube what a link is called
 js/export.js            frames to a silent MP4
 js/ui.js                small helpers shared by the screens
 js/screens/*.js         one file per screen
@@ -275,32 +276,47 @@ the other, because either alone gets a case wrong: 뉴진스 turns up a single
 cover version by name while Apple quietly has the whole NewJeans catalogue
 filed under a name that matches nothing.
 
-**Pasted links open directly.** The search box takes an address as readily as
-it takes words. Apple and Deezer both put the kind of thing and its number in
-the address itself, so no request is needed to tell an album from a track:
+**Pasted links open, by one of two routes.** Apple and Deezer put the kind of
+thing and its number in the address itself, so those are looked up exactly, no
+request needed to tell an album from a track. Spotify and YouTube ids only mean
+something inside their own service, but both publish a keyless oEmbed endpoint
+that names the track and sends the header a browser needs to read it. So those
+links are turned into a search of the other two catalogues, which is the only
+way to get a length and a canvas-safe cover out of them.
 
 | paste | what happens |
 |---|---|
-| `music.apple.com/.../album/x/893175779?i=893175788` | that one track |
-| `music.apple.com/.../song/archangel/893175788` | that one track |
+| `music.apple.com/.../album/x/893175779?i=893175788` | that one track, exactly |
 | `music.apple.com/.../album/untrue/893175779` | all 13 tracks, headed *Untrue* |
 | `music.apple.com/.../artist/burial/468355684` | that performer's tracks |
-| `deezer.com/track/80546728` | that one track |
-| `deezer.com/album/8045388` | the album's tracks |
-| `deezer.com/artist/2810121` | that performer's tracks |
-| Spotify or YouTube | says plainly that it cannot open them |
+| `deezer.com/track` · `/album` · `/artist` | the same, exactly |
+| `open.spotify.com/track/...` | searched for by name |
+| `spotify:track:...` and `/intl-de/` paths | the same |
+| `youtube.com/watch` · `youtu.be` · `/shorts` | searched by name and channel |
+| `music.youtube.com/watch` | the same |
+| `link.deezer.com/s/...` | named, and explained |
 
-Korean links work the same way; a `kr` locale in the address changes nothing.
-Spotify cannot be resolved without an account and a server, so rather than
-failing quietly the app names the service and suggests typing the song instead.
-Shortened `link.deezer.com` addresses redirect, which a browser is not allowed
-to follow across sites, so those are named too.
+The difference matters and the screen says so. A Spotify or YouTube link
+produces *matches for a name*, not the track itself, and the results carry a
+line saying which name was used and to check the artist before picking.
+YouTube is the better of the two because it names the channel as well as the
+video, so Rick Astley comes back first; Spotify gives the title alone, so a
+common title can be ambiguous. Video furniture such as `(Official Video)` and
+`(4K Remaster)` is stripped before searching, while anything that might be part
+of a real title, such as `(feat. ...)` or `(Acoustic)`, is left alone.
 
-**YouTube Music was considered and ruled out.** There is no official YouTube
-Music API. The YouTube Data API would need a key, which in a site with no
-server is public and abusable, and its default quota is **100 `search.list`
-calls per day for the whole app**, not per person. A debounced search box would
-exhaust that in one sitting. `ytmusicapi` is unofficial and needs a server.
+Shortened `spotify.link` addresses go to Spotify's endpoint, which resolves
+them on its own side. Shortened `link.deezer.com` ones cannot be followed:
+Deezer's oEmbed sends no CORS header and ignores a JSONP callback, so those are
+named rather than failing quietly.
+
+**YouTube and Spotify as search catalogues were ruled out**, which is a
+separate question from opening their links. There is no official YouTube Music
+API; the YouTube Data API needs a key, public and abusable in a site with no
+server, and allows **100 `search.list` calls per day for the whole app**, not
+per person. Spotify's Web API needs an OAuth token, which needs a secret, which
+needs a server. Their oEmbed endpoints are used instead precisely because they
+need neither.
 
 **Song search needs no fallback in practice.** The iTunes Search API and the
 artwork CDN both send `Access-Control-Allow-Origin: *`, so a normal fetch works
@@ -339,6 +355,11 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.6.0** - Spotify and YouTube links open too, through their keyless oEmbed
+  endpoints: the link is resolved to a name and that name searched in the two
+  catalogues that carry lengths and covers. YouTube Music, youtu.be and Shorts
+  addresses all work. Results say which name was used, because this is a match
+  by name rather than an exact lookup.
 - **0.5.1** - Pasted links open directly. An Apple Music or Deezer address for
   a track opens that track; for an album or a performer it opens the list to
   choose from, named in the heading. Spotify and YouTube links are named rather

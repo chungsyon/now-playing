@@ -11,7 +11,7 @@
  * straight away.)
  */
 
-const VERSION = 6;
+const VERSION = 7;
 const CACHE = `now-playing-v${VERSION}`;
 
 const SHELL = [
@@ -31,6 +31,7 @@ const SHELL = [
   'js/search.js',
   'js/net.js',
   'js/links.js',
+  'js/oembed.js',
   'js/export.js',
   'js/gestures.js',
   'js/screens/home.js',

@@ -12,15 +12,17 @@
  *   music.apple.com/us/artist/burial/468355684              a performer
  *   deezer.com/track/80546728                               one track
  *
- * Spotify and YouTube addresses are recognised only so the app can say plainly
- * that it cannot open them. Resolving a Spotify link needs an account and a
- * server, and neither exists here.
+ * Spotify and YouTube cannot be read that way: their ids only mean something
+ * inside their own service. Both publish a keyless oEmbed endpoint that names
+ * the track, so those links are turned into a search instead of a lookup.
+ * See js/oembed.js.
  */
 
 /**
  * @returns null when this is not a link at all, otherwise
  *   { source, kind, id }            something we can look up
- *   { unsupported: 'Spotify' }      a link we can name but not open
+ *   { source, kind: 'oembed', url }  something to ask the service about
+ *   { unsupported: '...' }          a link we can name but not open
  */
 export function parseMusicLink(text) {
   const trimmed = (text || '').trim();
@@ -46,6 +48,20 @@ export function parseMusicLink(text) {
     return { unsupported: 'That Apple Music link' };
   }
 
+  // --- Spotify ------------------------------------------------------------
+  // Every shape goes the same way, including the spotify: URI, locale paths
+  // like /intl-de/, and the spotify.link shortener, which the endpoint
+  // resolves on its own side.
+  if (/open\.spotify\.com|spotify\.link|^spotify:/i.test(trimmed)) {
+    return { source: 'spotify', kind: 'oembed', url: trimmed };
+  }
+
+  // --- YouTube ------------------------------------------------------------
+  // Ordinary videos, youtu.be, Shorts and music.youtube.com all answer here.
+  if (/youtube\.com|youtu\.be/i.test(trimmed)) {
+    return { source: 'youtube', kind: 'oembed', url: trimmed };
+  }
+
   // --- Deezer ------------------------------------------------------------
   if (/(^|\.)deezer\.com/i.test(trimmed)) {
     // link.deezer.com shortens to the real address through a redirect this
@@ -57,10 +73,6 @@ export function parseMusicLink(text) {
     if (path) return { source: 'deezer', kind: path[1].toLowerCase(), id: path[2] };
     return { unsupported: 'That Deezer link' };
   }
-
-  // --- The ones we can only name ----------------------------------------
-  if (/open\.spotify\.com|spotify:/i.test(trimmed)) return { unsupported: 'Spotify' };
-  if (/youtube\.com|youtu\.be/i.test(trimmed)) return { unsupported: 'YouTube' };
 
   return null;
 }

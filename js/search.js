@@ -23,6 +23,7 @@ import * as apple from './itunes.js';
 import * as deezer from './deezer.js';
 import { getCountry } from './itunes.js';
 import { parseMusicLink } from './links.js';
+import { resolveByOEmbed } from './oembed.js';
 
 export { getCountry, setCountry } from './itunes.js';
 export { parseMusicLink } from './links.js';
@@ -170,7 +171,7 @@ export async function searchSongs(term, { scope = getScope() } = {}) {
   const country = getCountry();
   const empty = {
     songs: [], artistName: null, label: null, noMatch: false,
-    unsupported: null, linkFailed: false,
+    unsupported: null, linkFailed: false, viaService: null, viaTitle: null,
     searchedCountry: country, fellBack: false,
   };
   if (!trimmed) return empty;
@@ -205,6 +206,28 @@ export async function searchSongs(term, { scope = getScope() } = {}) {
 async function openLink(link, country = getCountry()) {
   if (link.unsupported) {
     return { songs: [], unsupported: link.unsupported };
+  }
+
+  // Spotify and YouTube cannot be looked up, only asked about. What comes back
+  // is a name, which is then searched for in the two catalogues that do carry
+  // lengths and covers. That is a search, not a lookup, so the screen says so.
+  if (link.kind === 'oembed') {
+    try {
+      const named = await resolveByOEmbed(link.source, link.url);
+      if (!named) return { songs: [], linkFailed: true };
+
+      const found = await gatherEverything(named.query, country);
+      const service = link.source === 'spotify' ? 'Spotify' : 'YouTube';
+      return {
+        songs: found.songs,
+        label: named.title,
+        viaService: service,
+        viaTitle: named.title,
+        noMatch: found.songs.length === 0,
+      };
+    } catch (error) {
+      return { songs: [], linkFailed: true };
+    }
   }
 
   try {

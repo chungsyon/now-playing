@@ -35,6 +35,7 @@ export async function enter(root, app) {
   let noMatch = false;
   let unsupported = null;
   let linkFailed = false;
+  let via = null;
   let notice = '';
   let searching = false;
   let runId = 0;
@@ -72,6 +73,7 @@ export async function enter(root, app) {
       noMatch = false;
       unsupported = null;
       linkFailed = false;
+      via = null;
       notice = '';
       searching = false;
       paint();
@@ -90,6 +92,7 @@ export async function enter(root, app) {
       noMatch = found.noMatch;
       unsupported = found.unsupported || null;
       linkFailed = found.linkFailed || false;
+      via = found.viaService ? { service: found.viaService, title: found.viaTitle } : null;
       notice = found.fellBack
         ? `The ${getCountry()} store had nothing, so this is the US store.`
         : '';
@@ -101,6 +104,7 @@ export async function enter(root, app) {
       noMatch = false;
       unsupported = null;
       linkFailed = false;
+      via = null;
       notice = error.message === 'offline'
         ? 'No connection. Song search needs one; everything else works offline.'
         : 'Something didn\'t come through. Try once more.';
@@ -129,7 +133,7 @@ export async function enter(root, app) {
     const chosen = project.song.title && !app.state.browsing;
     if (chosen) paintChosen(stage, app, { onSearchAgain: () => { app.state.browsing = true; paint(); } });
     else paintChoosing(stage, app, {
-      results, artistName, label, noMatch, unsupported, linkFailed, notice, searching, onPick: pick,
+      results, artistName, label, noMatch, unsupported, linkFailed, via, notice, searching, onPick: pick,
     });
     paintSettings(stage, app, search);
   }
@@ -188,7 +192,7 @@ function songLine(song) {
 // ---------------------------------------------------------------------------
 
 function paintChoosing(stage, app, {
-  results, artistName, label, noMatch, unsupported, linkFailed, notice, searching, onPick,
+  results, artistName, label, noMatch, unsupported, linkFailed, via, notice, searching, onPick,
 }) {
   // The heading names the album or performer a pasted link opened, or whose
   // catalogue an artist search found, because it may not be the one you meant.
@@ -200,6 +204,13 @@ function paintChoosing(stage, app, {
     head,
     searching ? h('div', { class: 'developing' }) : null,
     notice ? h('p', { class: 'body body--tight' }, notice) : null,
+    // A link from a service we cannot look up became a search, so say that
+    // rather than letting it look like an exact answer.
+    via && !searching && results.length > 0
+      ? h('p', { class: 'body body--tight' },
+          `${via.service} only gives the name, so these are matches for `
+          + `"${via.title}". Check the artist before you pick.`)
+      : null,
     buildResults(results, { searching, noMatch, unsupported, linkFailed }, app, onPick),
   ));
 }
@@ -215,10 +226,10 @@ function buildResults(results, state, app, onPick) {
     }
     if (unsupported) {
       return h('div', { class: 'stack', style: { gap: '10px' } },
-        emptyState(`${unsupported} links cannot be opened here.`),
+        emptyState(`${unsupported} cannot be opened here.`),
         h('p', { class: 'body body--tight' },
-          'Apple Music and Deezer links work. For anything else, type the song '
-          + 'and the artist instead.'),
+          'Apple Music, Spotify, YouTube and full Deezer links all work. '
+          + 'For anything else, type the song and the artist instead.'),
       );
     }
     if (linkFailed) {
@@ -226,6 +237,13 @@ function buildResults(results, state, app, onPick) {
     }
     if (parseMusicLink(term)) {
       return emptyState('That link did not lead anywhere. Try the song name instead.');
+    }
+    if (via) {
+      return h('div', { class: 'stack', style: { gap: '10px' } },
+        emptyState(`That ${via.service} link is "${via.title}", but neither catalogue has it.`),
+        h('p', { class: 'body body--tight' },
+          'Try the artist name alongside the title, or use By artist.'),
+      );
     }
     if (noMatch) {
       // Apple did send something back, but none of it contained the words
