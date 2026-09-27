@@ -13,7 +13,7 @@ import {
 } from '../model.js';
 import { EFFECTS, makeEffect } from '../effects.js';
 import { Stage, render } from '../render.js';
-import { FPS } from '../export.js';
+import { FPS, bitrateFor } from '../export.js';
 import { attachGestures, layerBounds } from '../gestures.js';
 import { putStyle } from '../db.js';
 import { asRoomColour, dedupeHex } from '../color.js';
@@ -34,6 +34,7 @@ let sheetBody = null;
 let activeTab = 'layers';
 let currentApp = null;
 let onResize = null;
+let pendingDraw = 0;
 
 // ---------------------------------------------------------------------------
 
@@ -91,8 +92,15 @@ export async function enter(root, app) {
   buildSheet(app);
   buildStage(app, preview);
 
-  // The available height changes when the address bar hides or the phone turns.
-  onResize = () => buildStage(app, preview);
+  // The available height changes when the address bar hides or the phone
+  // turns. iOS slides that bar a pixel at a time and fires this the whole
+  // way, so it waits for the sliding to stop: rebuilding the stage means
+  // throwing away canvases and making new ones.
+  let resizeTimer = null;
+  onResize = () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => buildStage(app, preview), 120);
+  };
   window.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', onResize);
 
@@ -170,7 +178,9 @@ function buildStage(app, preview) {
     Math.round(cssWidth * Math.min(2, window.devicePixelRatio || 1)));
   const height = Math.round(width * ratio);
 
-  if (stage && stage.width === width && stage.height === height) {
+  // Within a few pixels, keep what is already there. The slide is drawn from
+  // fractions, so a stage two pixels off shows the same picture.
+  if (stage && Math.abs(stage.width - width) <= 4 && Math.abs(stage.height - height) <= 4) {
     drawOnce(app);
     return;
   }
@@ -187,7 +197,23 @@ function buildStage(app, preview) {
   drawOnce(app);
 }
 
+/**
+ * Ask for a redraw. Several asks in one frame are one redraw.
+ *
+ * A finger on an iPhone reports up to a hundred and twenty times a second,
+ * and every report used to redraw the slide there and then. That is two or
+ * three full frames of work inside one frame of screen time, which is what a
+ * drag felt like: the picture arriving behind the thumb.
+ */
 function drawOnce(app) {
+  if (!stage || pendingDraw) return;
+  pendingDraw = requestAnimationFrame(() => {
+    pendingDraw = 0;
+    paintNow(app);
+  });
+}
+
+function paintNow(app) {
   if (!stage) return;
   stage.media = app.state.media;
   const t = playing ? loopPosition(app) : app.state.previewTime || 0;
@@ -213,9 +239,16 @@ function togglePlay(button) {
   button.setAttribute('aria-label', playing ? 'Pause the loop' : 'Play the loop');
   if (playing) {
     playStart = performance.now() - (app.state.previewTime || 0) * 1000;
-    const tick = () => {
+    // The file is thirty frames a second, so the preview is too. Drawing at
+    // the screen's rate instead would be twice the work to show the same
+    // thing, and on a phone that is the difference between smooth and not.
+    let lastPaint = 0;
+    const tick = now => {
       if (!playing) return;
-      drawOnce(app);
+      if (now - lastPaint >= 1000 / FPS - 1) {
+        lastPaint = now;
+        paintNow(app);
+      }
       frameHandle = requestAnimationFrame(tick);
     };
     frameHandle = requestAnimationFrame(tick);
@@ -230,6 +263,8 @@ function stopLoop() {
   playing = false;
   if (frameHandle) cancelAnimationFrame(frameHandle);
   frameHandle = null;
+  if (pendingDraw) cancelAnimationFrame(pendingDraw);
+  pendingDraw = 0;
 }
 
 /** The selection outline lives on its own canvas, so it never reaches the file. */
@@ -614,18 +649,39 @@ function animationTab(box, app) {
   const disc = project.layers.find(l => l.type === 'disc');
   const bar = project.layers.find(l => l.type === 'progressBar');
 
-  const loopNote = h('p', { class: 'body body--tight' });
-  const showLoopNote = () => {
-    const seconds = project.loopSeconds;
-    loopNote.textContent = seconds > 60
-      ? `${Math.round(seconds * FPS)} frames. Longer than a minute is a Reel, `
-        + 'not a carousel slide, and the file will be large.'
-      : `${Math.round(seconds * FPS)} frames at ${FPS} a second.`;
+  // Filled in below when there is a record; the loop slider calls it either way.
+  let refreshDisc = () => {};
+  const readout = h('p', { class: 'body body--tight' });
+  const showTurns = () => {
+    if (!disc) return;
+    const real = actualRpm(disc.props.rpm, project.loopSeconds);
+    readout.textContent =
+      `Rounded to ${Math.round((real / 60) * project.loopSeconds)} whole turns, `
+      + `which is ${real.toFixed(1)} rpm. Whole turns are what let the loop close `
+      + 'without a jump.';
   };
-  showLoopNote();
+
+  // The readout and the note are written into, never rebuilt. Rebuilding the
+  // sheet from inside onInput throws away the slider the thumb is holding, so
+  // the drag stopped dead after one step.
+  const loopLabel = bottle('Loop', `${project.loopSeconds.toFixed(1)}s`);
+  const loopValue = loopLabel.querySelector('.bottle__value');
+  const loopNote = h('p', { class: 'body body--tight' });
+  const showLoop = () => {
+    const seconds = project.loopSeconds;
+    loopValue.textContent = `${seconds.toFixed(1)}s`;
+    const rate = (bitrateFor(seconds) / 1e6).toFixed(1);
+    const megabytes = Math.round((bitrateFor(seconds) * seconds) / 8 / 1e6);
+    loopNote.textContent = seconds > 60
+      ? `${Math.round(seconds * FPS)} frames at ${rate} Mbps, about ${megabytes}MB. `
+        + 'Longer than a minute is a Reel, not a carousel slide.'
+      : `${Math.round(seconds * FPS)} frames at ${FPS} a second, `
+        + `${rate} Mbps, about ${megabytes}MB.`;
+  };
+  showLoop();
 
   box.append(
-    bottle('Loop', `${project.loopSeconds.toFixed(1)}s`),
+    loopLabel,
     sliderRow({
       label: 'Length',
       min: LOOP_MIN, max: LOOP_MAX, step: 1,
@@ -633,8 +689,9 @@ function animationTab(box, app) {
       format: value => `${value}s`,
       onInput: value => {
         project.loopSeconds = value;
+        showLoop();
+        refreshDisc();
         app.save();
-        buildSheet(app);
         drawOnce(app);
       },
     }),
@@ -642,19 +699,20 @@ function animationTab(box, app) {
   );
 
   if (disc) {
-    const readout = h('p', { class: 'body body--tight' });
-    const showTurns = () => {
-      const real = actualRpm(disc.props.rpm, project.loopSeconds);
-      readout.textContent =
-        `Rounded to ${Math.round((real / 60) * project.loopSeconds)} whole turns, ` +
-        `which is ${real.toFixed(1)} rpm. Whole turns are what let the loop close ` +
-        `without a jump.`;
+    const discLabel = bottle('Record',
+      `${Math.round(actualRpm(disc.props.rpm, project.loopSeconds))} rpm`);
+    const discValue = discLabel.querySelector('.bottle__value');
+    const showDisc = () => {
+      showTurns();
+      discValue.textContent =
+        `${Math.round(actualRpm(disc.props.rpm, project.loopSeconds))} rpm`;
     };
-    showTurns();
+    showDisc();
+    refreshDisc = showDisc;
 
     box.append(
       h('div', { style: { height: '18px' } }),
-      bottle('Record', `${Math.round(actualRpm(disc.props.rpm, project.loopSeconds))} rpm`),
+      discLabel,
       sliderRow({
         label: 'Speed',
         min: 8, max: 90, step: 1,
@@ -662,7 +720,7 @@ function animationTab(box, app) {
         format: value => `${value} rpm`,
         onInput: value => {
           disc.props.rpm = value;
-          showTurns();
+          showDisc();
           app.save();
           drawOnce(app);
         },

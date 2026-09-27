@@ -12,7 +12,7 @@
 import { h, clear, icon, toast, titleCard, bottle } from '../ui.js';
 import { formatTime } from '../model.js';
 import { Stage, render } from '../render.js';
-import { renderToVideo, saveVideo, exportSupport, FPS } from '../export.js';
+import { renderToVideo, saveVideo, exportSupport, FPS, bitrateFor } from '../export.js';
 
 let lastResult = null;
 let lastUrl = null;
@@ -159,6 +159,7 @@ function facts(box, project, result) {
     ['Size', `${project.aspect.w} x ${project.aspect.h}`],
     ['Loop', `${project.loopSeconds.toFixed(1)}s at ${FPS} fps`],
     ['Frames', String(Math.round(project.loopSeconds * FPS))],
+    ['Rate', `${(bitrateFor(project.loopSeconds) / 1e6).toFixed(1)} Mbps`],
     ['Audio', 'none'],
   ];
   if (result) rows.push(['File', `${(result.blob.size / 1048576).toFixed(1)} MB`]);

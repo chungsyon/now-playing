@@ -16,6 +16,11 @@
  * Drawing a layer on its own is what makes per-layer effects possible, and it
  * is also what will make a corner-pin warp possible later: a warp is just
  * another pass on step 3.
+ *
+ * A layer with no effects and nothing to see through skips steps 2 to 4 and
+ * goes straight onto the slide. It looks identical and costs a fraction: a
+ * clear and a copy of the whole slide, per layer, per frame, is most of what
+ * a frame was spending.
  */
 
 import { valueAt, turnsPerLoop, formatTime } from './model.js';
@@ -225,8 +230,47 @@ export class Stage {
     this.layerCanvas.height = height;
     this.layerCtx = this.layerCanvas.getContext('2d');
 
-    this.effects = new EffectGL(width, height);
+    // Made on demand. Grain and vignette are the only things that need it,
+    // and most slides have neither; a WebGL context costs real time to set
+    // up, and a phone will only hand out so many of them.
+    this.effects = null;
     this.blurCanvas = null;
+
+    // ponytail: one slot. Only a layer with effects is worth keeping, and in
+    // both templates that is the photo and nothing else. Two effect-laden
+    // layers would take turns and neither would hit. Make it a Map keyed by
+    // layer id if that ever becomes a real arrangement.
+    this.kept = { key: null, canvas: null };
+  }
+
+  /** Changes whenever a different photo or cover has been handed over. */
+  mediaKey() {
+    if (this.lastPhoto !== this.media.photo || this.lastCover !== this.media.cover) {
+      this.lastPhoto = this.media.photo;
+      this.lastCover = this.media.cover;
+      this.mediaCount = (this.mediaCount || 0) + 1;
+    }
+    return this.mediaCount;
+  }
+
+  /** The finished layer saved under this key, or null. */
+  fromKept(key) {
+    return this.kept.key === key ? this.kept.canvas : null;
+  }
+
+  /** Save a finished layer. The copy happens once, not once a frame. */
+  keep(key, finished) {
+    if (!this.kept.canvas) {
+      this.kept.canvas = document.createElement('canvas');
+      this.kept.canvas.width = this.width;
+      this.kept.canvas.height = this.height;
+      this.keptCtx = this.kept.canvas.getContext('2d');
+    }
+    this.keptCtx.setTransform(1, 0, 0, 1, 0, 0);
+    this.keptCtx.clearRect(0, 0, this.width, this.height);
+    this.keptCtx.drawImage(finished, 0, 0);
+    this.kept.key = key;
+    return this.kept.canvas;
   }
 
   /** Clear the scratch canvas and hand back its context. */
@@ -283,7 +327,9 @@ export class Stage {
       : this.layerCanvas;
 
     const shaders = chain.filter(effect => effect.type !== 'blur');
-    if (shaders.length === 0 || !this.effects.ok) return source;
+    if (shaders.length === 0) return source;
+    if (!this.effects) this.effects = new EffectGL(this.width, this.height);
+    if (!this.effects.ok) return source;
     try {
       return this.effects.run(source, shaders, t) ? this.effects.canvas : source;
     } catch (error) {
@@ -293,13 +339,41 @@ export class Stage {
   }
 
   dispose() {
-    this.effects.dispose();
+    if (this.effects) this.effects.dispose();
+    this.effects = null;
   }
 }
 
 // ===========================================================================
 // render
 // ===========================================================================
+
+/**
+ * These two draw a different picture at every moment of the loop. Everything
+ * else draws the same picture the whole way round, whatever `t` says.
+ */
+const MOVES_WITH_TIME = new Set(['disc', 'progressBar']);
+
+/** True when this layer looks the same at every moment of the loop. */
+function holdsStill(layer) {
+  if (MOVES_WITH_TIME.has(layer.type)) return false;
+  for (const value of Object.values(layer.props)) {
+    if (value && typeof value === 'object' && Array.isArray(value.keyframes)) return false;
+  }
+  return true;
+}
+
+/**
+ * Everything the drawing of this layer depends on, as one string. Different
+ * string, different picture; same string, the saved one will do.
+ */
+function layerSignature(layer, project, stage) {
+  return JSON.stringify([
+    layer.id, layer.props, layer.effects,
+    stage.width, stage.height, stage.mediaKey(),
+    project.palette, project.song.title, project.song.artist,
+  ]);
+}
 
 export function render(stage, project, t) {
   const ctx = stage.ctx;
@@ -315,10 +389,32 @@ export function render(stage, project, t) {
     const opacity = valueAt(layer.props.opacity, t);
     if (opacity <= 0.001) continue;
 
-    const layerCtx = stage.beginLayer();
-    drawLayer(layerCtx, layer, project, t, stage);
+    // The scratch canvas is only needed when something has to see the layer
+    // whole: an effect, or a part-transparent layer whose own shapes overlap.
+    // Most layers are neither, and going straight onto the slide saves them a
+    // full-size clear and a full-size copy every frame. With five or six
+    // layers that is most of the drawing a frame does.
+    if (opacity > 0.999 && (!layer.effects || layer.effects.length === 0)) {
+      ctx.save();
+      drawLayer(ctx, layer, project, t, stage);
+      ctx.restore();
+      continue;
+    }
 
-    const finished = stage.applyEffects(layer.effects, t);
+    // The expensive path. A layer that holds still only has to go down it
+    // once: a blurred photo is the same blurred photo at every moment of the
+    // loop, and blurring it thirty times a second is most of what the Player
+    // template was spending a frame on.
+    const key = holdsStill(layer) ? layerSignature(layer, project, stage) : null;
+    let finished = key === null ? null : stage.fromKept(key);
+
+    if (!finished) {
+      const layerCtx = stage.beginLayer();
+      drawLayer(layerCtx, layer, project, t, stage);
+      finished = stage.applyEffects(layer.effects, t);
+      if (key !== null) finished = stage.keep(key, finished);
+    }
+
     ctx.globalAlpha = opacity;
     ctx.drawImage(finished, 0, 0, stage.width, stage.height);
     ctx.globalAlpha = 1;

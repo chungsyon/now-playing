@@ -359,6 +359,44 @@ the editor preview starts paused.
 
 ---
 
+### Keeping it quick on a phone
+
+A slide is small, but a phone redraws it thirty times a second while a thumb
+is on it, so the work per frame is the whole game. Five things keep it down.
+
+**A layer with no effects goes straight onto the slide.** The scratch canvas
+exists so an effect can see a layer whole. A layer with no effect does not
+need it, and skipping it saves a full-slide clear and a full-slide copy per
+layer per frame. That alone halved the cost of a frame.
+
+**A layer that holds still is drawn once.** Only the record and the progress
+bar look different at different moments of the loop. The blurred photo behind
+them is the same picture every frame, so it is kept and reused until something
+it depends on changes. `layerSignature` in `js/render.js` is the list of what
+that means.
+
+**Redraws are coalesced.** A finger reports up to 120 times a second, and each
+report used to draw a frame there and then, which is two or three frames of
+work inside one frame of screen time. Now a report asks for a redraw and the
+next animation frame does one.
+
+**The preview runs at 30fps, the rate of the file.** Drawing at the screen's
+60 or 120 would be twice the work to show the same thing.
+
+**WebGL is only started when a shader is.** Grain and vignette need it, blur
+and everything else do not, so most slides never make a GL context at all.
+Rebuilding the stage is also held off until the iOS address bar has finished
+sliding, and ignored entirely for a change of a few pixels.
+
+**Bitrate follows length.** Ninety seconds at the rate a six-second loop gets
+is a file too big to move around on a phone, so the ceiling comes down with
+length, aiming at about 20MB. Short loops are untouched. `bitrateFor` in
+`js/export.js`.
+
+*Worth knowing:* mediabunny's `Quality` takes a factor from 0 to 1, not a
+number of bits. The rate goes in `bitrate`, and a rate passed as a `Quality`
+is silently ignored, which is what used to happen here.
+
 ## What is vendored
 
 | What | Version | Licence |
@@ -384,6 +422,13 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.7.1** - Faster, and smaller files for long loops. A frame costs about
+  half what it did, the preview runs at the rate of the file rather than the
+  screen, and a drag draws once per frame instead of once per finger report.
+  The export bitrate now comes down as the loop gets longer: a minute of the
+  busiest thing this makes went from 90MB to 19MB. Short loops are unchanged.
+  Dragging the Length slider also works now; it used to rebuild the panel
+  under your thumb and stop after one step.
 - **0.7.0** - Four changes. The loop now runs up to 90 seconds instead of 15.
   Gestures snap: to the middle of the slide, to anything standing still, and
   to clean angles when tilting. The cover, the words, the bar and the buttons

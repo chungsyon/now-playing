@@ -15,14 +15,40 @@ import {
   Mp4OutputFormat,
   BufferTarget,
   CanvasSource,
-  Quality,
   canEncodeVideo,
 } from '../vendor/mediabunny-1.59.1.min.mjs';
 
 import { Stage, render } from './render.js';
 
 export const FPS = 30;
-export const BITRATE = 8_000_000;
+
+/**
+ * How many bits a second to spend.
+ *
+ * A short loop can afford the best the encoder will give, because the file is
+ * small either way. Ninety seconds at that rate is ninety megabytes, which is
+ * a lot to hold in memory, hand to the share sheet and push up a phone
+ * connection. So the rate is chosen to aim at a file of about twenty
+ * megabytes, never spending more than a short loop would and never dropping
+ * below what this picture needs.
+ *
+ * It can drop a long way without showing, because almost nothing moves: a
+ * record turning slowly, a bar creeping across. H.264 spends almost nothing
+ * on a frame that is nearly the last one.
+ */
+const TARGET_BYTES = 20e6;
+// What a short loop was already getting before there was a ceiling at all, so
+// nothing that worked before comes out worse.
+const BEST = 12_000_000;
+const LEAST = 2_500_000;
+
+export function bitrateFor(seconds) {
+  const fits = (TARGET_BYTES * 8) / Math.max(1, seconds);
+  return Math.round(Math.min(BEST, Math.max(LEAST, fits)));
+}
+
+/** The rate a short loop gets, which is also what the encoder probe asks for. */
+export const BITRATE = BEST;
 
 /** What this device can do. Checked once, then remembered. */
 let supportPromise = null;
@@ -37,7 +63,7 @@ export function exportSupport() {
         h264 = await canEncodeVideo('avc', {
           width: 1080,
           height: 1350,
-          quality: new Quality(BITRATE),
+          bitrate: BEST,
         });
       } catch {
         h264 = false;
@@ -62,6 +88,7 @@ const yieldToBrowser = () => new Promise(resolve => setTimeout(resolve, 0));
 // ---------------------------------------------------------------------------
 
 async function encodeWithWebCodecs(stage, project, totalFrames, onProgress) {
+  const bitrate = bitrateFor(project.loopSeconds);
   const output = new Output({
     // 'in-memory' writes the index at the front of the file, which is what
     // Photos and Instagram expect to find.
@@ -69,9 +96,12 @@ async function encodeWithWebCodecs(stage, project, totalFrames, onProgress) {
     target: new BufferTarget(),
   });
 
+  // `bitrate` is the option that carries a rate. Mediabunny's `Quality` takes
+  // a 0..1 factor instead, so a number of bits per second handed to it is not
+  // a rate at all and was quietly ignored.
   const source = new CanvasSource(stage.canvas, {
     codec: 'avc',
-    quality: new Quality(BITRATE),
+    bitrate,
     keyFrameInterval: 2,
   });
   output.addVideoTrack(source, { frameRate: FPS });
@@ -111,7 +141,10 @@ async function encodeWithMediaRecorder(stage, project, onProgress) {
   if (!mimeType) throw new Error('This browser cannot record video.');
 
   const stream = stage.canvas.captureStream(FPS);
-  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: BITRATE });
+  const recorder = new MediaRecorder(stream, {
+    mimeType,
+    videoBitsPerSecond: bitrateFor(project.loopSeconds),
+  });
   const chunks = [];
   recorder.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
   const stopped = new Promise(resolve => { recorder.onstop = resolve; });

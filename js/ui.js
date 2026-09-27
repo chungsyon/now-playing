@@ -210,6 +210,8 @@ export function loopTimer() {
   const total = h('span', {}, '/ 8.0');
   const read = h('span', { class: 'timer__read' }, now, ' ', total);
   const node = h('div', { class: 'timer' }, svg, read);
+  let lastNow = '0.0';
+  let lastTotal = '/ 8.0';
 
   return {
     node,
@@ -217,8 +219,12 @@ export function loopTimer() {
       const fraction = loopSeconds > 0 ? Math.min(1, t / loopSeconds) : 0;
       sweep.setAttribute('stroke-dashoffset', String(CIRCUMFERENCE * (1 - fraction)));
       hand.setAttribute('transform', `rotate(${fraction * 360} 18 18)`);
-      now.textContent = t.toFixed(1);
-      total.textContent = `/ ${loopSeconds.toFixed(1)}`;
+      // The count only shows tenths, so it is only written when a tenth has
+      // gone by rather than on every frame.
+      const tenths = t.toFixed(1);
+      if (tenths !== lastNow) { now.textContent = tenths; lastNow = tenths; }
+      const whole = `/ ${loopSeconds.toFixed(1)}`;
+      if (whole !== lastTotal) { total.textContent = whole; lastTotal = whole; }
     },
   };
 }
