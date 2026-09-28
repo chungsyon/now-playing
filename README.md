@@ -359,6 +359,37 @@ the editor preview starts paused.
 
 ---
 
+### Three sizes
+
+Phones are still what this is written for, and nothing in the main stylesheet
+is written for anything else. Two sizes are added on top, and only two.
+
+**From 640px** — a tablet held upright, or a small window. The column stops
+being a phone's width and the slide gets bigger. Same shape, more room. An
+iPad upright is 768 or 834 and lands here: standing the bench on its side at
+that width would leave the slide narrower than it is on the phone.
+
+**From 1024px** — a tablet turned sideways, or a desktop. The bench leaves the
+bottom of the screen and stands beside the slide, which then takes everything
+left over. Lists run in two columns. Nothing moves in the markup to do this:
+`.screen--editor` becomes a grid and the three pieces are placed by name, so
+one stylesheet drives both shapes.
+
+**A mouse cannot pinch or twist**, which left scale and rotate unreachable on
+a desktop. So the four dots on the selection are grabbable: drag one to
+resize, drag just outside one to turn. They are hit from `layerBounds`, the
+same box the editor draws, so what you grab is always what you see. A handle
+works about the middle of the layer it belongs to, not the middle of the
+group, for two reasons: the corner then stays under the pointer instead of
+drifting off it, and a handle that happened to sit near the group's middle
+would otherwise have enormous leverage. The rest of the group still follows,
+anchored on the one you are holding.
+
+Arrow keys nudge, Shift for bigger steps. Nudging does not snap: pressing an
+arrow is already saying exactly where you want it, and a guide would swallow
+every step near the middle. A line in the Layers panel says all this, and
+only on a device with a pointer.
+
 ### Keeping it quick on a phone
 
 A slide is small, but a phone redraws it thirty times a second while a thumb
@@ -422,6 +453,12 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.8.0** - A desktop and iPad layout. From 640px the column widens; from
+  1024px, which is an iPad turned sideways, the bench moves to the side of
+  the slide and lists run in two columns. The four dots on the selection
+  became grabbable, because a mouse cannot pinch or twist: drag a corner to
+  resize, just outside one to turn. Arrow keys nudge. The phone layout is
+  untouched.
 - **0.7.1** - Faster, and smaller files for long loops. A frame costs about
   half what it did, the preview runs at the rate of the file rather than the
   screen, and a drag draws once per frame instead of once per finger report.

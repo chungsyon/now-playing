@@ -14,11 +14,17 @@ import {
 import { EFFECTS, makeEffect } from '../effects.js';
 import { Stage, render } from '../render.js';
 import { FPS, bitrateFor } from '../export.js';
-import { attachGestures, layerBounds } from '../gestures.js';
+import { attachGestures, layerBounds, handleRadius } from '../gestures.js';
 import { putStyle } from '../db.js';
 import { asRoomColour, dedupeHex } from '../color.js';
 
-const PREVIEW_MAX_WIDTH = 560;
+/**
+ * How wide the slide is allowed to be drawn. On a phone the screen decides
+ * long before this does; on a desktop or a sideways tablet it is this.
+ */
+function previewCap() {
+  return window.innerWidth >= 1024 ? 900 : 560;
+}
 
 let stage = null;
 let previewCanvas = null;
@@ -34,6 +40,7 @@ let sheetBody = null;
 let activeTab = 'layers';
 let currentApp = null;
 let onResize = null;
+let onKey = null;
 let pendingDraw = 0;
 
 // ---------------------------------------------------------------------------
@@ -119,6 +126,25 @@ export async function enter(root, app) {
     },
   });
 
+  // Arrow keys nudge the selection. Listening on the window rather than the
+  // canvas means it works without clicking the slide first, which is what
+  // anyone with a keyboard expects.
+  onKey = event => {
+    const STEPS = {
+      ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+    };
+    const step = STEPS[event.key];
+    if (!step) return;
+    // Not while something is being typed into.
+    const target = event.target;
+    if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+    if (!app.state.selectedLayerId) return;
+
+    const far = event.shiftKey ? 0.02 : 0.004;
+    if (gestures.nudge(step[0] * far, step[1] * far)) event.preventDefault();
+  };
+  window.addEventListener('keydown', onKey);
+
   // Start paused when the phone asks for less movement.
   if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     togglePlay(playButton);
@@ -134,6 +160,10 @@ export function leave() {
     window.removeEventListener('resize', onResize);
     window.removeEventListener('orientationchange', onResize);
     onResize = null;
+  }
+  if (onKey) {
+    window.removeEventListener('keydown', onKey);
+    onKey = null;
   }
   previewCanvas = null;
   previewCtx = null;
@@ -163,7 +193,7 @@ function buildStage(app, preview) {
   // here rather than in CSS means the whole slide is always visible: nothing
   // ever disappears behind the sheet.
   const ratio = project.aspect.h / project.aspect.w;
-  const roomWidth = Math.min(PREVIEW_MAX_WIDTH, area.clientWidth || 340);
+  const roomWidth = Math.min(previewCap(), area.clientWidth || 340);
   const roomHeight = Math.max(160, area.clientHeight || 360);
   const cssWidth = Math.floor(Math.min(roomWidth, roomHeight / ratio));
   const cssHeight = Math.round(cssWidth * ratio);
@@ -277,32 +307,20 @@ function drawSelection(app) {
   drawGroupBox(app, layer);
   drawGuides(app);
 
-  const p = layer.props;
-  const cx = valueAt(p.x, 0) * stage.width;
-  const cy = valueAt(p.y, 0) * stage.height;
-  const scale = valueAt(p.scale, 0);
-  let w = stage.width * scale;
-  let h = w;
-  if (layer.type === 'text') {
-    const size = stage.width * valueAt(p.size, 0) * scale;
-    w = stage.width * 0.8;
-    h = size * 1.8;
-  } else if (layer.type === 'progressBar') {
-    h = stage.width * 0.11;
-  } else if (layer.type === 'controls') {
-    h = w * 0.42;
-  }
+  // The same box gestures.js hit-tests, so a corner dot is grabbable exactly
+  // where it is drawn.
+  const { cx, cy, w, h, rotation } = layerBounds(layer, app.state.project, stage);
 
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate((valueAt(p.rotation, 0) * Math.PI) / 180);
+  ctx.rotate((rotation * Math.PI) / 180);
   ctx.strokeStyle = '#F2A65A';
   ctx.lineWidth = Math.max(1.5, stage.width * 0.004);
   ctx.setLineDash([stage.width * 0.018, stage.width * 0.014]);
   ctx.strokeRect(-w / 2, -h / 2, w, h);
 
   ctx.setLineDash([]);
-  const handle = Math.max(5, stage.width * 0.013);
+  const handle = handleRadius(stage);
   ctx.fillStyle = '#F2A65A';
   for (const [hx, hy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     ctx.beginPath();
@@ -493,6 +511,13 @@ function layersTab(box, app) {
         ? 'Drag any layer and only that layer moves.'
         : 'Drag any of them and the whole arrangement follows, keeping its '
           + 'spacing. Lock one to leave it behind.'),
+    // Said only where it applies. A finger pinches and twists and needs no
+    // telling; a mouse has to be shown the corners.
+    window.matchMedia('(pointer: fine)').matches
+      ? h('p', { class: 'body body--tight', style: { marginTop: '8px' } },
+        'Drag a corner dot to resize, just outside one to turn. '
+        + 'Arrow keys nudge, Shift for bigger steps.')
+      : null,
     h('div', { style: { height: '18px' } }),
     bottle('Layers', `${String(project.layers.length).padStart(2, '0')} total`),
   );

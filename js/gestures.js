@@ -49,6 +49,57 @@ export function pullAngle(degrees) {
   return Math.abs(nearest - degrees) <= SNAP_ANGLE_REACH ? nearest : degrees;
 }
 
+// --- Corner handles ---------------------------------------------------------
+// A finger can pinch and twist; a mouse cannot. So the four dots on the
+// selection are grabbable: drag one to resize, drag just outside one to turn.
+// The dots are drawn by the editor and hit here, from the same box, so what
+// is grabbed is always what is shown.
+
+/** How big a corner dot is drawn. */
+export function handleRadius(stage) {
+  return Math.max(5, stage.width * 0.013);
+}
+
+/** How near a dot counts as holding it, and how far outside counts as turning. */
+function grabReach(stage) {
+  return Math.max(20, stage.width * 0.038);
+}
+function turnReach(stage) {
+  return Math.max(24, stage.width * 0.05);
+}
+
+/**
+ * What this point is grabbing on the selected layer: its corner dot, the
+ * space just outside one, or nothing.
+ *
+ * @returns 'scale' | 'rotate' | null
+ */
+export function handleAt(layer, project, stage, x, y) {
+  if (!layer || layer.locked || !layer.visible) return null;
+  const b = layerBounds(layer, project, stage);
+
+  // Into the box's own frame, so a turned box is still four square corners.
+  const angle = (-b.rotation * Math.PI) / 180;
+  const dx = x - b.cx;
+  const dy = y - b.cy;
+  const localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+  const localY = dx * Math.sin(angle) + dy * Math.cos(angle);
+
+  const halfW = b.w / 2;
+  const halfY = b.h / 2;
+  const grab = grabReach(stage);
+  const turn = turnReach(stage);
+  const outside = Math.abs(localX) > halfW || Math.abs(localY) > halfY;
+
+  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+    const away = Math.hypot(localX - sx * halfW, localY - sy * halfY);
+    if (away <= grab) return 'scale';
+    // Turning lives outside the box only, so the inside stays a plain drag.
+    if (outside && away <= grab + turn) return 'rotate';
+  }
+  return null;
+}
+
 /**
  * Put every member of a gesture where that gesture says it goes.
  *
@@ -161,6 +212,7 @@ export function attachGestures(element, api) {
   const pointers = new Map();
   let start = null;
   let snapped = { x: false, y: false, rotation: false };
+  let grabbed = null;      // 'scale' | 'rotate' when a corner is being held
 
   const toStage = event => {
     const rect = element.getBoundingClientRect();
@@ -187,9 +239,11 @@ export function attachGestures(element, api) {
     };
   };
 
-  const beginGesture = () => {
-    const layer = selectedLayer();
-    if (!layer || layer.locked) { start = null; return; }
+  /**
+   * Where everything stands at the moment a gesture begins. A drag, a handle
+   * and an arrow key all work from one of these.
+   */
+  const snapshotOf = layer => {
     const project = api.getProject();
 
     // Everything this gesture moves, with where it started. For a layer on
@@ -213,22 +267,89 @@ export function attachGestures(element, api) {
       other => other.visible && other.type !== 'photo'
         && !members.some(m => m.layer === other),
     );
-    const base = {
+    return {
       layer, members, pivotX, pivotY,
       lead: members.find(m => m.layer === layer) || members[0],
       xTargets: [0.5, ...others.map(other => valueAt(other.props.x, 0))],
       yTargets: [0.5, ...others.map(other => valueAt(other.props.y, 0))],
     };
+  };
+
+  const beginGesture = () => {
+    const layer = selectedLayer();
+    if (!layer || layer.locked) { start = null; return; }
+    const base = snapshotOf(layer);
 
     if (pointers.size >= 2) {
       start = { ...base, mode: 'two', ...twoFingerState() };
-    } else {
-      const only = [...pointers.values()][0];
-      start = { ...base, mode: 'one', midX: only.x, midY: only.y };
+      return;
     }
+
+    const only = [...pointers.values()][0];
+    if (!grabbed) {
+      start = { ...base, mode: 'one', midX: only.x, midY: only.y };
+      return;
+    }
+
+    // A handle turns and resizes about the middle of the layer it belongs
+    // to, not the middle of the group. Two reasons: the corner then stays
+    // under the pointer instead of drifting away from it, and a handle that
+    // happened to sit near the group's middle would otherwise have enormous
+    // leverage, a few pixels of movement doubling everything. The rest of
+    // the group still follows, anchored on the one you are holding.
+    const stage = api.getStage();
+    const px = base.lead.x * stage.width;
+    const py = base.lead.y * stage.height;
+    start = {
+      ...base,
+      pivotX: base.lead.x,
+      pivotY: base.lead.y,
+      mode: grabbed,
+      midX: only.x,
+      midY: only.y,
+      grabRadius: Math.hypot(only.x - px, only.y - py),
+      grabAngle: (Math.atan2(only.y - py, only.x - px) * 180) / Math.PI,
+    };
   };
 
   const place = (k, turn, dx, dy) => placeMembers(start, api.getStage(), k, turn, dx, dy);
+
+  /**
+   * Say what is under the pointer. Touch never sees this: it only runs when
+   * something moves across the slide with nothing held down.
+   */
+  const showCursor = point => {
+    const project = api.getProject();
+    const stage = api.getStage();
+    const layer = selectedLayer();
+    const grab = handleAt(layer, project, stage, point.x, point.y);
+
+    if (grab === 'rotate') { element.style.cursor = 'grab'; return; }
+    if (grab === 'scale') {
+      // Which way the arrow lies: the corner's own diagonal.
+      const b = layerBounds(layer, project, stage);
+      const same = (point.x - b.cx) * (point.y - b.cy) >= 0;
+      element.style.cursor = same ? 'nwse-resize' : 'nesw-resize';
+      return;
+    }
+    element.style.cursor = layerAt(project, stage, point.x, point.y) ? 'move' : 'default';
+  };
+
+  /**
+   * Move the selection by hand, in slide fractions. This is the arrow keys,
+   * and it does not snap: pressing an arrow is already saying exactly where
+   * you want it, and a guide would swallow every step near the middle.
+   */
+  const nudgeBy = (dx, dy) => {
+    const layer = selectedLayer();
+    if (!layer || layer.locked) return false;
+    const held = start;
+    start = snapshotOf(layer);
+    place(1, 0, dx, dy);
+    start = held;
+    api.onChange();
+    return true;
+  };
 
   const onDown = event => {
     // Register the finger first. Capturing can fail, and if it does the
@@ -238,14 +359,24 @@ export function attachGestures(element, api) {
 
     if (pointers.size === 1) {
       const point = [...pointers.values()][0];
-      const hit = layerAt(api.getProject(), api.getStage(), point.x, point.y);
-      api.onSelect(hit ? hit.id : null);
+      // A corner of what is already selected is taken first, so reaching for
+      // a handle never picks up whatever happens to sit behind it.
+      grabbed = handleAt(selectedLayer(), api.getProject(), api.getStage(), point.x, point.y);
+      if (!grabbed) {
+        const hit = layerAt(api.getProject(), api.getStage(), point.x, point.y);
+        api.onSelect(hit ? hit.id : null);
+      }
     }
     beginGesture();
   };
 
   const onMove = event => {
-    if (!pointers.has(event.pointerId)) return;
+    // A mouse moving with no button down is hovering, not dragging. That is
+    // the moment to say what the cursor is over.
+    if (!pointers.has(event.pointerId)) {
+      showCursor(toStage(event));
+      return;
+    }
     pointers.set(event.pointerId, toStage(event));
     if (!start) return;
 
@@ -264,6 +395,18 @@ export function attachGestures(element, api) {
       turn = pullAngle(wanted) - start.lead.rotation;
       dx = (now.midX - start.midX) / stage.width;
       dy = (now.midY - start.midY) / stage.height;
+    } else if (start.mode === 'scale' || start.mode === 'rotate') {
+      const only = [...pointers.values()][0];
+      const px = start.pivotX * stage.width;
+      const py = start.pivotY * stage.height;
+      if (start.mode === 'scale') {
+        const reach = Math.hypot(only.x - px, only.y - py);
+        if (start.grabRadius > 4) k = reach / start.grabRadius;
+      } else {
+        const now = (Math.atan2(only.y - py, only.x - px) * 180) / Math.PI;
+        const wanted = start.lead.rotation + (now - start.grabAngle);
+        turn = pullAngle(wanted) - start.lead.rotation;
+      }
     } else if (start.mode === 'one') {
       const only = [...pointers.values()][0];
       dx = (only.x - start.midX) / stage.width;
@@ -275,8 +418,10 @@ export function attachGestures(element, api) {
     // group, so nothing inside it shifts relative to anything else.
     place(k, turn, dx, dy);
     const lead = start.lead.layer.props;
-    const pullX = pullTo(lead.x, start.xTargets, SNAP_REACH);
-    const pullY = pullTo(lead.y, start.yTargets, SNAP_REACH);
+    // A handle is not moving the layer, so there is nothing to line up with.
+    const lining = start.mode === 'one' || start.mode === 'two';
+    const pullX = lining ? pullTo(lead.x, start.xTargets, SNAP_REACH) : 0;
+    const pullY = lining ? pullTo(lead.y, start.yTargets, SNAP_REACH) : 0;
     if (pullX || pullY) place(k, turn, dx + pullX, dy + pullY);
 
     snapped = {
@@ -298,6 +443,7 @@ export function attachGestures(element, api) {
     } catch { /* already gone */ }
     if (pointers.size === 0) {
       start = null;
+      grabbed = null;
       snapped = { x: false, y: false, rotation: false };
       api.onChange();             // the guides go away with the fingers
     } else {
@@ -313,7 +459,10 @@ export function attachGestures(element, api) {
   return {
     /** Which guides the layer is sitting on right now. The editor draws them. */
     snapped: () => snapped,
+    /** Shift the selection by a fraction of the slide. Used by the arrow keys. */
+    nudge: nudgeBy,
     destroy() {
+      element.style.cursor = '';
       element.removeEventListener('pointerdown', onDown);
       element.removeEventListener('pointermove', onMove);
       element.removeEventListener('pointerup', onUp);

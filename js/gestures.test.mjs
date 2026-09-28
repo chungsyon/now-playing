@@ -1,6 +1,6 @@
 /** Run with: node js/gestures.test.mjs */
 import assert from 'node:assert/strict';
-import { pullTo, pullAngle, placeMembers } from './gestures.js';
+import { pullTo, pullAngle, placeMembers, handleAt, layerBounds } from './gestures.js';
 import { createProject, movesWith } from './model.js';
 
 const near = (a, b, slack = 1e-9) => assert.ok(Math.abs(a - b) <= slack, `${a} != ${b}`);
@@ -69,6 +69,48 @@ near(members[0].layer.props.scale, members[0].scale * 0.5);
 // Every call measures from the start, so repeating one is not cumulative.
 placeMembers(start, stage, 0.5, 0, 0, 0);
 near(members[0].layer.props.scale, members[0].scale * 0.5);
+
+// --- corner handles --------------------------------------------------------
+// A mouse cannot pinch, so the four dots are grabbable. These check that the
+// grabbable area is where the dot is drawn, including on a turned layer.
+{
+  const p = createProject({ template: 'vinyl' });
+  const st = { width: 1080, height: 1350 };
+  const sleeve = p.layers.find(l => l.type === 'cover');
+  const b = layerBounds(sleeve, p, st);
+  const corner = { x: b.cx + b.w / 2, y: b.cy + b.h / 2 };
+  const out = d => handleAt(sleeve, p, st, corner.x + d, corner.y + d);
+
+  assert.equal(handleAt(sleeve, p, st, corner.x, corner.y), 'scale', 'on the dot');
+  assert.equal(out(20), 'scale', 'near enough to the dot');
+  assert.equal(out(45), 'rotate', 'just outside it');
+  assert.equal(out(200), null, 'well clear of it');
+  assert.equal(handleAt(sleeve, p, st, b.cx, b.cy), null, 'the middle is a plain drag');
+
+  // Inside the box but level with a corner is still a drag, never a turn.
+  assert.equal(handleAt(sleeve, p, st, b.cx, b.cy + b.h / 2 - 5), null, 'inside the edge');
+
+  // A turned layer carries its corners round with it. The sleeve is square,
+  // so a quarter turn puts a corner back where a corner was; the progress
+  // bar is long and thin, which is what shows the difference.
+  const wide = createProject({ template: 'player' });
+  const bar = wide.layers.find(l => l.type === 'progressBar');
+  const flat = layerBounds(bar, wide, st);
+  const wasCorner = { x: flat.cx + flat.w / 2, y: flat.cy + flat.h / 2 };
+  assert.equal(handleAt(bar, wide, st, wasCorner.x, wasCorner.y), 'scale', 'corner, flat');
+
+  bar.props.rotation = 90;
+  const turned = layerBounds(bar, wide, st);
+  const nowCorner = { x: turned.cx - turned.h / 2, y: turned.cy + turned.w / 2 };
+  assert.equal(handleAt(bar, wide, st, nowCorner.x, nowCorner.y), 'scale', 'corner, turned');
+  assert.equal(handleAt(bar, wide, st, wasCorner.x, wasCorner.y), null, 'where it used to be');
+
+  // A locked layer has no handles, because it cannot be moved at all.
+  sleeve.locked = true;
+  assert.equal(handleAt(sleeve, p, st, corner.x, corner.y), null, 'locked');
+  sleeve.locked = false;
+  assert.equal(handleAt(null, p, st, corner.x, corner.y), null, 'nothing selected');
+}
 
 // Grouping off leaves one layer on its own.
 project.grouped = false;

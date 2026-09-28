@@ -777,14 +777,99 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 /* --- Wider screens -------------------------------------------------------
-   Phones come first. On anything larger the column simply stops growing. */
 
-@media (min-width: 560px) {
-  .screen { max-width: 470px; width: 100%; margin: 0 auto; }
+   Phones come first, and nothing above is written for anything else. Two
+   sizes are added on top of that, and only two:
+
+     from 640px   a tablet held upright, or a small window. The column stops
+                  being a phone's width and the slide gets bigger. Same
+                  shape, more room.
+
+     from 1024px  a tablet turned sideways, or a desktop. The bench leaves
+                  the bottom of the screen and stands beside the slide, and
+                  the slide takes everything that is left. Lists run in two
+                  columns because there is room for two.
+
+   1024 is the line because that is an iPad in landscape. Upright it is 768
+   or 834, which stays in the middle case: a bench on the side of an upright
+   tablet would leave the slide narrower than it is on the phone. */
+
+@media (min-width: 640px) {
+  .screen { max-width: 560px; width: 100%; margin: 0 auto; }
   .screen--editor { max-width: none; }
-  /* Keep the slide, the timer and the bench on one column so they line up.
-     Below 560px none of this applies and the slide meets the screen edges. */
   .screen--editor .editor-stage,
   .screen--editor .sheet,
-  .screen--editor .loopbar { max-width: 470px; width: 100%; margin: 0 auto; }
+  .screen--editor .loopbar { max-width: 560px; width: 100%; margin: 0 auto; }
+  /* A little air round the slide once it is no longer meeting the phone's
+     own edges. */
+  .screen--editor .editor-stage { padding: 14px 0; }
+  .sheet__body { height: clamp(190px, 30dvh, 320px); }
+}
+
+@media (min-width: 1024px) {
+  .screen { max-width: 820px; }
+
+  /* The editor becomes two columns. The grid is what moves the bench without
+     moving anything in the markup: the slide and the loop bar stack on the
+     left, the bench runs the full height on the right. */
+  .screen--editor.is-active {
+    display: grid;
+    max-width: none;
+    grid-template-columns: minmax(0, 1fr) clamp(360px, 30vw, 460px);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'stage bench'
+      'loop  bench';
+  }
+  .screen--editor .editor-stage {
+    grid-area: stage;
+    max-width: none;
+    margin: 0;
+    padding: 30px 30px 6px;
+  }
+  .screen--editor .loopbar {
+    grid-area: loop;
+    max-width: none;
+    margin: 0;
+    padding: 12px 30px calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+  .screen--editor .sheet {
+    grid-area: bench;
+    max-width: none;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-top: none;
+    border-left: 1px solid var(--hairline);
+  }
+  /* Standing up, the bench takes whatever height is going rather than the
+     fixed slice it gets at the bottom of a phone. */
+  .screen--editor .sheet__body { height: auto; flex: 1; min-height: 0; }
+
+  /* Room for two. The container carries the closing rule so an odd number of
+     items still ends on a straight line. */
+  .items {
+    display: grid;
+    /* minmax(0, 1fr), not 1fr: a long song title would otherwise push its
+       own column wider than the other and the two would not line up. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 30px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .items > *:last-child { border-bottom: none; }
+  /* The bench is one narrow column even here, so its lists stay single. */
+  .sheet .items { display: flex; }
+  .sheet .items { border-bottom: none; }
+  .sheet .items > *:last-child { border-bottom: 1px solid var(--hairline); }
+
+  .slides { gap: 22px; }
+}
+
+/* --- A mouse or a trackpad ----------------------------------------------
+   Touch has no hover and no cursor, so none of this is written for it. */
+
+@media (pointer: fine) {
+  .stagewrap { cursor: default; }
+  .item, .btn, .sheet__tab { cursor: pointer; }
 }
