@@ -13,6 +13,7 @@ import {
 import {
   TEMPLATES, applyTemplate, valueAt, findLayer, formatTime,
   actualRpm, LOOP_MIN, LOOP_MAX, LAYER_LABELS, toStyle, movesWith,
+  isKeyed, keyIndexAt, setValueAt, toggleKeyAt,
 } from '../model.js';
 import { EFFECTS, makeEffect } from '../effects.js';
 import { Stage, render } from '../render.js';
@@ -45,6 +46,10 @@ let currentApp = null;
 let onResize = null;
 let onKey = null;
 let pendingDraw = 0;
+let playButtonRef = null;
+// Everything on the sheet that shows a value at the current moment: told
+// every time the moment changes, by playing, scrubbing or jumping to a key.
+let timeWatchers = [];
 
 // ---------------------------------------------------------------------------
 
@@ -64,6 +69,8 @@ export async function enter(root, app) {
     `${app.state.project.aspect.w}×${app.state.project.aspect.h}`);
 
   const playButton = iconButton('play', 'Play the loop', () => togglePlay(playButton));
+  playButtonRef = playButton;
+  attachScrub(app, timer);
 
   sheetBody = h('div', { class: 'sheet__body' });
   const tabSwitch = segmented([
@@ -163,6 +170,8 @@ export function leave() {
   }
   previewCanvas = null;
   previewCtx = null;
+  playButtonRef = null;
+  timeWatchers = [];
   if (gestures) gestures.destroy();
   gestures = null;
   if (stage) stage.dispose();
@@ -252,6 +261,122 @@ function paintNow(app) {
   previewCtx.drawImage(stage.canvas, 0, 0);
   drawSelection(app);
   paintLoopBar(app, t);
+  for (const watch of timeWatchers) watch(t);
+}
+
+/** The moment the slide is showing. */
+function currentTime(app) {
+  return playing ? loopPosition(app) : app.state.previewTime || 0;
+}
+
+/** Stop where it is. Editing a value means editing it at one moment. */
+function pause() {
+  if (playing && playButtonRef) togglePlay(playButtonRef);
+}
+
+/** Go to a moment and stay there. */
+function seek(app, t) {
+  pause();
+  app.state.previewTime = Math.max(0, Math.min(app.state.project.loopSeconds, t));
+  drawOnce(app);
+}
+
+/**
+ * The loop bar is a scrubber. The finger is followed from the moment it
+ * lands, and keeps being followed if it slides off the bar.
+ */
+function attachScrub(app, timer) {
+  const at = event => {
+    const rect = timer.track.getBoundingClientRect();
+    const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / (rect.width || 1)));
+    seek(app, fraction * app.state.project.loopSeconds);
+  };
+  timer.node.addEventListener('pointerdown', event => {
+    timer.node.setPointerCapture(event.pointerId);
+    timer.node.classList.add('is-scrubbing');
+    at(event);
+  });
+  timer.node.addEventListener('pointermove', event => {
+    if (timer.node.hasPointerCapture(event.pointerId)) at(event);
+  });
+  const end = () => timer.node.classList.remove('is-scrubbing');
+  timer.node.addEventListener('pointerup', end);
+  timer.node.addEventListener('pointercancel', end);
+}
+
+/**
+ * A slider that can be keyframed: `holder[key]` is either a number or
+ * { keyframes }. The ◆ adds a keyframe at the playhead, or takes away the one
+ * there. Once there are keyframes, moving the slider records one wherever the
+ * playhead is, and a strip underneath shows them all along the loop.
+ */
+function keyedSlider(app, { label, holder, key, min, max, step, fallback, format }) {
+  const read = () => valueAt(holder[key], currentTime(app)) ?? fallback;
+
+  const row = sliderRow({
+    label, min, max, step,
+    value: read(),
+    format,
+    onInput: value => {
+      pause();
+      setValueAt(holder, key, currentTime(app), value);
+      paintMarks();
+      app.save();
+      drawOnce(app);
+    },
+  });
+
+  const diamond = h('button', { class: 'btn btn--icon key', type: 'button' });
+  diamond.addEventListener('click', () => {
+    pause();
+    toggleKeyAt(holder, key, currentTime(app), fallback);
+    paintMarks();
+    app.save();
+    drawOnce(app);
+  });
+  row.head.append(diamond);
+
+  const strip = h('div', { class: 'keys', hidden: true });
+  const head = h('span', { class: 'keys__head' });
+
+  function paintMarks() {
+    clear(strip);
+    const prop = holder[key];
+    strip.hidden = !isKeyed(prop);
+    if (strip.hidden) return;
+    const loop = app.state.project.loopSeconds;
+    for (const frame of prop.keyframes) {
+      const mark = h('button', {
+        class: 'keys__mark',
+        type: 'button',
+        'aria-label': `Go to the keyframe at ${frame.t.toFixed(1)} seconds`,
+        style: { left: `${Math.min(100, (frame.t / loop) * 100)}%` },
+        onclick: () => seek(app, frame.t),
+      });
+      strip.append(mark);
+    }
+    strip.append(head);
+    watch(currentTime(app));
+  }
+
+  // Cheap enough to run every frame while the loop plays: nothing is built.
+  function watch(t) {
+    const on = keyIndexAt(holder[key], t) >= 0;
+    if (diamond.dataset.on !== String(on)) {
+      diamond.dataset.on = String(on);
+      clear(diamond).append(icon(on ? 'diamond-fill' : 'diamond'));
+      diamond.setAttribute('aria-pressed', String(on));
+      diamond.setAttribute('aria-label', on ? `Remove the ${label} keyframe here` : `Add a ${label} keyframe here`);
+    }
+    if (isKeyed(holder[key])) {
+      row.set(valueAt(holder[key], t) ?? fallback);
+      head.style.left = `${(t / app.state.project.loopSeconds) * 100}%`;
+    }
+  }
+
+  timeWatchers.push(watch);
+  paintMarks();
+  return h('div', {}, row, strip);
 }
 
 function loopPosition(app) {
@@ -413,6 +538,7 @@ function drawGuides(app) {
 
 function buildSheet(app) {
   clear(sheetBody);
+  timeWatchers = [];
   const build = { layers: layersTab, effects: effectsTab, animation: animationTab, song: songTab };
   build[activeTab](sheetBody, app);
 }
@@ -463,17 +589,15 @@ function layersTab(box, app) {
     clear(blurBox);
     const blur = photo.effects.find(e => e.type === 'blur');
     if (!blur) return;
-    blurBox.append(sliderRow({
+    blurBox.append(keyedSlider(app, {
       label: 'Blur amount',
+      holder: blur.params, key: 'radius',
       min: blurSpec.min, max: blurSpec.max, step: blurSpec.step,
-      value: blur.params.radius ?? blurSpec.default,
+      fallback: blurSpec.default,
       format: value => String(value),
-      onInput: value => {
-        blur.params.radius = value;
-        app.save();
-        drawOnce(app);
-      },
     }));
+    blurBox.append(h('p', { class: 'footnote', style: { padding: '8px 0 0' } },
+      'Drag the bar under the slide to a moment, then tap \u25C6 to keyframe the blur there.'));
   };
   paintBlur();
 
@@ -609,19 +733,12 @@ function effectsTab(box, app) {
 
     const controls = h('div', { class: 'group--pad', style: { display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '0' } });
     for (const [key, def] of Object.entries(spec.params)) {
-      const current = effect.params[key] ?? def.default;
-      controls.append(sliderRow({
+      controls.append(keyedSlider(app, {
         label: def.label,
-        min: def.min,
-        max: def.max,
-        step: def.step,
-        value: current,
+        holder: effect.params, key,
+        min: def.min, max: def.max, step: def.step,
+        fallback: def.default,
         format: value => (def.step < 1 ? value.toFixed(2) : String(value)),
-        onInput: value => {
-          effect.params[key] = value;
-          app.save();
-          drawOnce(app);
-        },
       }));
     }
 

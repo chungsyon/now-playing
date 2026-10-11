@@ -84,6 +84,62 @@ export function valueAt(prop, t) {
 }
 
 // ---------------------------------------------------------------------------
+// Keyframes
+// ---------------------------------------------------------------------------
+// A slider that is keyed holds { keyframes: [...] } instead of a number. These
+// read and write one value of `holder[key]` at a moment `t`, in seconds.
+
+/** Two keyframes closer than this are the same moment. */
+const SAME_MOMENT = 0.05;
+
+export function isKeyed(prop) {
+  return !!(prop && typeof prop === 'object' && Array.isArray(prop.keyframes));
+}
+
+/** The keyframe at this moment, or -1. */
+export function keyIndexAt(prop, t) {
+  if (!isKeyed(prop)) return -1;
+  return prop.keyframes.findIndex(frame => Math.abs(frame.t - t) < SAME_MOMENT);
+}
+
+/**
+ * Set the value at a moment. Unkeyed, that is just the value. Keyed, it is a
+ * keyframe at that moment, made if there is none: once a slider is animated,
+ * moving it anywhere on the timeline records a keyframe there.
+ */
+export function setValueAt(holder, key, t, value) {
+  const prop = holder[key];
+  if (!isKeyed(prop)) {
+    holder[key] = value;
+    return;
+  }
+  const index = keyIndexAt(prop, t);
+  if (index >= 0) prop.keyframes[index].value = value;
+  else {
+    prop.keyframes.push({ t, value, ease: 'inOut' });
+    prop.keyframes.sort((a, b) => a.t - b.t);
+  }
+}
+
+/** Add a keyframe here holding the value as it is, or take away the one here. */
+export function toggleKeyAt(holder, key, t, fallback) {
+  const prop = holder[key];
+  const current = valueAt(prop, t) ?? fallback;
+  if (!isKeyed(prop)) {
+    holder[key] = { keyframes: [{ t, value: current, ease: 'inOut' }] };
+    return;
+  }
+  const index = keyIndexAt(prop, t);
+  if (index < 0) {
+    setValueAt(holder, key, t, current);
+    return;
+  }
+  prop.keyframes.splice(index, 1);
+  // The last keyframe gone: back to a plain value, the one showing now.
+  if (prop.keyframes.length === 0) holder[key] = current;
+}
+
+// ---------------------------------------------------------------------------
 // Layers
 // ---------------------------------------------------------------------------
 

@@ -106,10 +106,19 @@ export function sliderRow({ label, min, max, step, value, format, onInput }) {
     onInput(next);
   });
 
-  return h('div', { class: 'slider-row' },
+  const row = h('div', { class: 'slider-row' },
     h('div', { class: 'slider-row__head' }, h('span', {}, label), readout),
     input,
   );
+  // Move the slider from outside, without it calling onInput: used when the
+  // value changes because time moved, not because a finger did.
+  row.set = value => {
+    input.value = value;
+    readout.textContent = format ? format(Number(input.value)) : String(input.value);
+    paint();
+  };
+  row.head = row.firstChild;
+  return row;
 }
 
 /**
@@ -200,13 +209,14 @@ export function loopTimer() {
   const fill = h('span', { class: 'timer__fill' });
   const now = h('span', { class: 'timer__time' }, '0.0');
   const total = h('span', { class: 'timer__time' }, '8.0');
-  const node = h('div', { class: 'timer', 'aria-hidden': 'true' },
-    now, h('span', { class: 'timer__track' }, fill), total);
+  const track = h('span', { class: 'timer__track' }, fill);
+  const node = h('div', { class: 'timer' }, now, track, total);
   let lastNow = '0.0';
   let lastTotal = '8.0';
 
   return {
     node,
+    track,
     set(t, loopSeconds) {
       const fraction = loopSeconds > 0 ? Math.min(1, t / loopSeconds) : 0;
       // A transform, not a width, so it never costs a layout.

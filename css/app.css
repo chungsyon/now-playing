@@ -738,6 +738,72 @@ button.row:active { background: var(--fill-strong); transition: none; }
 .effect__name { flex: 1; font-weight: 600; font-size: 15px; }
 .effect__head .btn--icon { color: var(--label-2); }
 
+/* The loop bar under the slide is a scrubber: drag it to move through time. */
+.timer { cursor: pointer; touch-action: none; padding: 10px 0; }
+.timer.is-scrubbing .timer__track { height: 8px; }
+.timer__track { transition: height var(--t-ui) var(--ease); }
+
+/* --- Keyframes ---------------------------------------------------------- */
+
+.slider-row__head .key {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  margin: -6px -6px -6px 0;
+  color: var(--label-3);
+}
+.slider-row__head .key[aria-pressed='true'] { color: var(--tint); }
+.slider-row__head .key .icon { width: 16px; height: 16px; }
+.slider-row__head span:first-child { flex: 1; }
+
+/* The strip under a keyed slider: the loop from start to end, a diamond for
+   each keyframe, and a line where the playhead is. */
+.keys {
+  position: relative;
+  height: 24px;
+  margin: 2px 13px 0;
+}
+.keys::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--sep);
+}
+.keys__mark {
+  position: absolute;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+.keys__mark::after {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 2px;
+  background: var(--tint);
+  transform: rotate(45deg);
+  transition: transform var(--t-ui) var(--ease);
+}
+.keys__mark:active::after { transform: rotate(45deg) scale(0.8); transition-duration: var(--t-press); }
+.keys__head {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--label);
+  pointer-events: none;
+}
+
 /* --- Export --------------------------------------------------------------- */
 
 .slides { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }

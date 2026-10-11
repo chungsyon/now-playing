@@ -445,6 +445,10 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.11.0** - Keyframes. Drag the loop bar under the slide to any moment and
+  tap the diamond beside a slider to keyframe it there; values ease between
+  keyframes as the loop plays. Works on the background blur and every effect
+  slider. Once a slider has keyframes, moving it records one at the playhead.
 - **0.10.0** - The Player sits on a pane of frosted glass: the photo behind it
   blurred, tinted from the cover, with an edge that catches the light. The
   bar, the buttons and the words take their colours from the cover. The

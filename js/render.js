@@ -23,7 +23,7 @@
  * a frame was spending.
  */
 
-import { valueAt, turnsPerLoop, formatTime } from './model.js';
+import { valueAt, turnsPerLoop, formatTime, isKeyed } from './model.js';
 import { EFFECTS, withDefaults } from './effects.js';
 import { coverTones, withAlpha } from './color.js';
 
@@ -317,6 +317,12 @@ export class Stage {
    */
   applyEffects(chain, t) {
     if (!chain || chain.length === 0) return this.layerCanvas;
+    // A keyed slider is read at this moment; everything below sees numbers.
+    chain = chain.map(effect => ({
+      ...effect,
+      params: Object.fromEntries(Object.entries(effect.params || {})
+        .map(([key, value]) => [key, valueAt(value, t)])),
+    }));
 
     // Two blurs on one layer add up as the squares of their radii, the same
     // way two gaussians do. One blur is the case that actually happens.
@@ -358,10 +364,8 @@ const MOVES_WITH_TIME = new Set(['disc', 'progressBar']);
 /** True when this layer looks the same at every moment of the loop. */
 function holdsStill(layer) {
   if (MOVES_WITH_TIME.has(layer.type)) return false;
-  for (const value of Object.values(layer.props)) {
-    if (value && typeof value === 'object' && Array.isArray(value.keyframes)) return false;
-  }
-  return true;
+  if (Object.values(layer.props).some(isKeyed)) return false;
+  return !(layer.effects || []).some(effect => Object.values(effect.params || {}).some(isKeyed));
 }
 
 /**
@@ -826,11 +830,15 @@ function roundedRect(c, x, y, w, h, r) {
  * sits straight above it, as the Player template puts it. A layer slipped in
  * between would freeze into the glass until the photo next changed.
  */
-function glassBehind(stage, project) {
+function glassBehind(stage, project, t) {
   const photo = project.layers.find(l => l.type === 'photo');
   const key = JSON.stringify([
     photo && [photo.visible, photo.props, photo.effects],
     stage.width, stage.height, stage.mediaKey(),
+    // ponytail: a keyed photo changes under the glass, so the glass is redone
+    // ten times a second rather than every frame. Through a blur that heavy
+    // the steps do not show; every frame if they ever do.
+    photo && !holdsStill(photo) ? Math.round(t * 10) : 0,
   ]);
   if (stage.glassKey === key) return stage.glass;
 
@@ -856,7 +864,7 @@ function glassBehind(stage, project) {
 function drawCard(ctx, layer, project, t, stage) {
   const p = layer.props;
   const tones = coverTones(project.palette);
-  const glass = glassBehind(stage, project);
+  const glass = glassBehind(stage, project, t);
 
   placed(ctx, layer, t, stage, (c, scale) => {
     const w = stage.width * scale;
