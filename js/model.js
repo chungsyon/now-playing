@@ -139,6 +139,15 @@ export function toggleKeyAt(holder, key, t, fallback) {
   if (prop.keyframes.length === 0) holder[key] = current;
 }
 
+/** Slide the keyframe at `from` to `to`, keeping them in time order. */
+export function moveKeyAt(holder, key, from, to) {
+  const prop = holder[key];
+  const index = keyIndexAt(prop, from);
+  if (index < 0) return;
+  prop.keyframes[index].t = to;
+  prop.keyframes.sort((a, b) => a.t - b.t);
+}
+
 // ---------------------------------------------------------------------------
 // Layers
 // ---------------------------------------------------------------------------

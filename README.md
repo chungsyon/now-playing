@@ -445,6 +445,11 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.12.0** - Position, size and angle can be keyframed: select a layer and
+  use the Animate rows under Layers, then drag or pinch it at another moment.
+  Keyframes slide along their strip to change when they happen. A Glass card
+  switch under Arrange puts the frosted card behind any template, Vinyl
+  included. The app reloads itself once when an update arrives.
 - **0.11.0** - Keyframes. Drag the loop bar under the slide to any moment and
   tap the diamond beside a slider to keyframe it there; values ease between
   keyframes as the loop plays. Works on the background blur and every effect

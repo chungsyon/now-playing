@@ -11,7 +11,7 @@
  * straight away.)
  */
 
-const VERSION = 17;
+const VERSION = 18;
 const CACHE = `now-playing-v${VERSION}`;
 
 const SHELL = [

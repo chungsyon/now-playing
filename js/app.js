@@ -287,6 +287,18 @@ async function boot() {
   // waits for the icons and the fonts first, and by then load has usually
   // already fired, so a listener added here would never run.
   if ('serviceWorker' in navigator) {
+    // When an update takes over, reload once so the new version is what
+    // shows, rather than the old one until the app is opened again. Not on
+    // the very first install, when there was nothing old to replace.
+    if (navigator.serviceWorker.controller) {
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (reloaded) return;
+        reloaded = true;
+        app.save.flush();
+        window.location.reload();
+      });
+    }
     navigator.serviceWorker.register('sw.js').catch(error => {
       console.warn('Offline support is unavailable:', error);
     });

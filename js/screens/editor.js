@@ -13,12 +13,12 @@ import {
 import {
   TEMPLATES, applyTemplate, valueAt, findLayer, formatTime,
   actualRpm, LOOP_MIN, LOOP_MAX, LAYER_LABELS, toStyle, movesWith,
-  isKeyed, keyIndexAt, setValueAt, toggleKeyAt,
+  isKeyed, keyIndexAt, setValueAt, toggleKeyAt, moveKeyAt,
 } from '../model.js';
 import { EFFECTS, makeEffect } from '../effects.js';
 import { Stage, render } from '../render.js';
 import { FPS, bitrateFor } from '../export.js';
-import { attachGestures, layerBounds, handleRadius, fitToSlide } from '../gestures.js';
+import { attachGestures, layerBounds, handleRadius, fitToSlide, setCard } from '../gestures.js';
 import { putStyle } from '../db.js';
 import { asRoomColour, dedupeHex } from '../color.js';
 
@@ -50,6 +50,8 @@ let playButtonRef = null;
 // Everything on the sheet that shows a value at the current moment: told
 // every time the moment changes, by playing, scrubbing or jumping to a key.
 let timeWatchers = [];
+// Strips that need redrawing when a gesture records a keyframe.
+let keyRefreshers = [];
 
 // ---------------------------------------------------------------------------
 
@@ -126,7 +128,11 @@ export async function enter(root, app) {
     onChange: () => {
       app.save();
       drawOnce(app);
+      // Keyframes a drag just recorded show up on the strips straight away.
+      for (const refresh of keyRefreshers) refresh();
     },
+    getTime: () => currentTime(app),
+    onStart: pause,
   });
 
   // Arrow keys nudge the selection. Listening on the window rather than the
@@ -172,6 +178,7 @@ export function leave() {
   previewCtx = null;
   playButtonRef = null;
   timeWatchers = [];
+  keyRefreshers = [];
   if (gestures) gestures.destroy();
   gestures = null;
   if (stage) stage.dispose();
@@ -259,7 +266,7 @@ function paintNow(app) {
   const t = playing ? loopPosition(app) : app.state.previewTime || 0;
   render(stage, app.state.project, t);
   previewCtx.drawImage(stage.canvas, 0, 0);
-  drawSelection(app);
+  drawSelection(app, t);
   paintLoopBar(app, t);
   for (const watch of timeWatchers) watch(t);
 }
@@ -291,93 +298,160 @@ function attachScrub(app, timer) {
     const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / (rect.width || 1)));
     seek(app, fraction * app.state.project.loopSeconds);
   };
+  // Held is tracked here rather than asked of the capture: capturing can
+  // fail, and the scrub should still work when it does.
+  let held = false;
   timer.node.addEventListener('pointerdown', event => {
-    timer.node.setPointerCapture(event.pointerId);
+    held = true;
+    try { timer.node.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
     timer.node.classList.add('is-scrubbing');
     at(event);
   });
   timer.node.addEventListener('pointermove', event => {
-    if (timer.node.hasPointerCapture(event.pointerId)) at(event);
+    if (held) at(event);
   });
-  const end = () => timer.node.classList.remove('is-scrubbing');
+  const end = () => {
+    held = false;
+    timer.node.classList.remove('is-scrubbing');
+  };
   timer.node.addEventListener('pointerup', end);
   timer.node.addEventListener('pointercancel', end);
 }
 
 /**
- * A slider that can be keyframed: `holder[key]` is either a number or
- * { keyframes }. The ◆ adds a keyframe at the playhead, or takes away the one
- * there. Once there are keyframes, moving the slider records one wherever the
- * playhead is, and a strip underneath shows them all along the loop.
+ * KEYFRAMES ON THE SHEET
+ * A track is one or more values that are keyframed together: a blur radius
+ * on its own, or x and y for a position, across every layer that moves with
+ * the selection. Each value is [holder, key], so `holder[key]` is either a
+ * number or { keyframes }.
+ *
+ * The ◆ adds a keyframe at the playhead or takes away the one there. The
+ * strip shows the keyframes along the loop: tap one to go to it, drag it to
+ * move it in time.
  */
-function keyedSlider(app, { label, holder, key, min, max, step, fallback, format }) {
-  const read = () => valueAt(holder[key], currentTime(app)) ?? fallback;
+function keyTrack(app, { label, pairs, fallback = 0, onChange = () => {} }) {
+  const lead = () => pairs()[0];
+  const leadProp = () => { const [holder, key] = lead(); return holder[key]; };
 
-  const row = sliderRow({
-    label, min, max, step,
-    value: read(),
-    format,
-    onInput: value => {
-      pause();
-      setValueAt(holder, key, currentTime(app), value);
-      paintMarks();
-      app.save();
-      drawOnce(app);
-    },
-  });
+  const changed = () => {
+    paintMarks();
+    app.save();
+    drawOnce(app);
+    onChange();
+  };
 
   const diamond = h('button', { class: 'btn btn--icon key', type: 'button' });
   diamond.addEventListener('click', () => {
     pause();
-    toggleKeyAt(holder, key, currentTime(app), fallback);
-    paintMarks();
-    app.save();
-    drawOnce(app);
+    const t = currentTime(app);
+    const on = keyIndexAt(leadProp(), t) >= 0;
+    for (const [holder, key] of pairs()) {
+      // All of them follow the lead: on together, off together.
+      if ((keyIndexAt(holder[key], t) >= 0) === on) toggleKeyAt(holder, key, t, fallback);
+    }
+    changed();
   });
-  row.head.append(diamond);
 
   const strip = h('div', { class: 'keys', hidden: true });
   const head = h('span', { class: 'keys__head' });
 
   function paintMarks() {
     clear(strip);
-    const prop = holder[key];
+    const prop = leadProp();
     strip.hidden = !isKeyed(prop);
     if (strip.hidden) return;
-    const loop = app.state.project.loopSeconds;
-    for (const frame of prop.keyframes) {
-      const mark = h('button', {
-        class: 'keys__mark',
-        type: 'button',
-        'aria-label': `Go to the keyframe at ${frame.t.toFixed(1)} seconds`,
-        style: { left: `${Math.min(100, (frame.t / loop) * 100)}%` },
-        onclick: () => seek(app, frame.t),
-      });
-      strip.append(mark);
-    }
+    for (const frame of prop.keyframes) strip.append(markFor(frame.t));
     strip.append(head);
     watch(currentTime(app));
   }
 
-  // Cheap enough to run every frame while the loop plays: nothing is built.
+  // A keyframe on the strip. It follows the finger 1:1 from the moment it
+  // moves; a touch that never moves is a tap, and goes to it.
+  function markFor(t) {
+    const loop = app.state.project.loopSeconds;
+    const mark = h('button', {
+      class: 'keys__mark',
+      type: 'button',
+      'aria-label': `${label} keyframe at ${t.toFixed(1)} seconds`,
+      style: { left: `${Math.min(100, (t / loop) * 100)}%` },
+    });
+    let at = t;
+    let downX = 0;
+    let held = false;
+    let dragging = false;
+    mark.addEventListener('pointerdown', event => {
+      held = true;
+      try { mark.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
+      downX = event.clientX;
+      dragging = false;
+      pause();
+    });
+    mark.addEventListener('pointercancel', () => { held = false; });
+    mark.addEventListener('pointermove', event => {
+      if (!held) return;
+      if (!dragging && Math.abs(event.clientX - downX) < 4) return;
+      dragging = true;
+      const rect = strip.getBoundingClientRect();
+      const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / (rect.width || 1)));
+      const to = Math.round(fraction * loop * 10) / 10;
+      if (to === at) return;
+      for (const [holder, key] of pairs()) moveKeyAt(holder, key, at, to);
+      at = to;
+      mark.style.left = `${(to / loop) * 100}%`;
+      seek(app, to);
+    });
+    mark.addEventListener('pointerup', () => {
+      if (!held) return;
+      held = false;
+      if (dragging) changed();
+      else seek(app, at);
+    });
+    return mark;
+  }
+
   function watch(t) {
-    const on = keyIndexAt(holder[key], t) >= 0;
+    const on = keyIndexAt(leadProp(), t) >= 0;
     if (diamond.dataset.on !== String(on)) {
       diamond.dataset.on = String(on);
       clear(diamond).append(icon(on ? 'diamond-fill' : 'diamond'));
       diamond.setAttribute('aria-pressed', String(on));
       diamond.setAttribute('aria-label', on ? `Remove the ${label} keyframe here` : `Add a ${label} keyframe here`);
     }
-    if (isKeyed(holder[key])) {
-      row.set(valueAt(holder[key], t) ?? fallback);
-      head.style.left = `${(t / app.state.project.loopSeconds) * 100}%`;
-    }
+    if (isKeyed(leadProp())) head.style.left = `${(t / app.state.project.loopSeconds) * 100}%`;
   }
 
   timeWatchers.push(watch);
+  keyRefreshers.push(paintMarks);
   paintMarks();
-  return h('div', {}, row, strip);
+  return { diamond, strip, paintMarks };
 }
+
+/** A slider whose value can be keyframed. */
+function keyedSlider(app, { label, holder, key, min, max, step, fallback, format }) {
+  const read = t => valueAt(holder[key], t) ?? fallback;
+  const row = sliderRow({
+    label, min, max, step,
+    value: read(currentTime(app)),
+    format,
+    onInput: value => {
+      pause();
+      setValueAt(holder, key, currentTime(app), value);
+      track.paintMarks();
+      app.save();
+      drawOnce(app);
+    },
+  });
+  const track = keyTrack(app, {
+    label, fallback,
+    pairs: () => [[holder, key]],
+    onChange: () => row.set(read(currentTime(app))),
+  });
+  row.head.append(track.diamond);
+  // While it plays, the slider follows the keyframes.
+  timeWatchers.push(t => { if (isKeyed(holder[key])) row.set(read(t)); });
+  return h('div', {}, row, track.strip);
+}
+
 
 function loopPosition(app) {
   const loop = app.state.project.loopSeconds;
@@ -424,18 +498,18 @@ function stopLoop() {
 }
 
 /** The selection outline lives on its own canvas, so it never reaches the file. */
-function drawSelection(app) {
+function drawSelection(app, t) {
   const ctx = overlayCtx;
   ctx.clearRect(0, 0, overlay.width, overlay.height);
   const layer = findLayer(app.state.project, app.state.selectedLayerId);
   if (!layer || layer.locked || !layer.visible) return;
 
-  drawGroupBox(app, layer);
-  drawGuides(app);
+  drawGroupBox(app, layer, t);
+  drawGuides(app, t);
 
   // The same box gestures.js hit-tests, so a corner dot is grabbable exactly
   // where it is drawn.
-  const { cx, cy, w, h, rotation } = layerBounds(layer, app.state.project, stage);
+  const { cx, cy, w, h, rotation } = layerBounds(layer, app.state.project, stage, t);
 
   ctx.save();
   ctx.translate(cx, cy);
@@ -463,7 +537,7 @@ function drawSelection(app) {
  * obvious before you touch it that the furniture travels as one piece.
  * Only drawn when there is more than one thing in it.
  */
-function drawGroupBox(app, layer) {
+function drawGroupBox(app, layer, t) {
   const members = movesWith(app.state.project, layer);
   if (members.length < 2) return;
 
@@ -473,7 +547,7 @@ function drawGroupBox(app, layer) {
   let bottom = -Infinity;
   for (const member of members) {
     // The widest the box can be once turned: good enough for a hint.
-    const b = layerBounds(member, app.state.project, stage);
+    const b = layerBounds(member, app.state.project, stage, t);
     const reach = Math.max(b.w, b.h) / 2;
     left = Math.min(left, b.cx - reach);
     right = Math.max(right, b.cx + reach);
@@ -491,7 +565,7 @@ function drawGroupBox(app, layer) {
 }
 
 /** The lines a gesture has just snapped onto. They live only while it lasts. */
-function drawGuides(app) {
+function drawGuides(app, t) {
   if (!gestures) return;
   const on = gestures.snapped();
   if (!on.x && !on.y && !on.rotation) return;
@@ -504,14 +578,14 @@ function drawGuides(app) {
   ctx.lineWidth = Math.max(1, stage.width * 0.003);
 
   if (on.x) {
-    const x = valueAt(layer.props.x, 0) * stage.width;
+    const x = valueAt(layer.props.x, t) * stage.width;
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, stage.height);
     ctx.stroke();
   }
   if (on.y) {
-    const y = valueAt(layer.props.y, 0) * stage.height;
+    const y = valueAt(layer.props.y, t) * stage.height;
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(stage.width, y);
@@ -524,9 +598,9 @@ function drawGuides(app) {
     ctx.fillStyle = '#FFD60A';
     ctx.textAlign = 'center';
     ctx.fillText(
-      `${Math.round(valueAt(layer.props.rotation, 0))}\u00B0`,
-      valueAt(layer.props.x, 0) * stage.width,
-      valueAt(layer.props.y, 0) * stage.height - size,
+      `${Math.round(valueAt(layer.props.rotation, t))}\u00B0`,
+      valueAt(layer.props.x, t) * stage.width,
+      valueAt(layer.props.y, t) * stage.height - size,
     );
   }
   ctx.restore();
@@ -539,6 +613,7 @@ function drawGuides(app) {
 function buildSheet(app) {
   clear(sheetBody);
   timeWatchers = [];
+  keyRefreshers = [];
   const build = { layers: layersTab, effects: effectsTab, animation: animationTab, song: songTab };
   build[activeTab](sheetBody, app);
 }
@@ -634,6 +709,13 @@ function layersTab(box, app) {
     section('Arrange',
       h('div', { class: 'group' },
         toggle('Show cover', project.showCover, on => { project.showCover = on; }),
+        // The frosted pane behind the furniture. Any template can have one.
+        switchRow('Glass card', project.layers.some(l => l.type === 'card'), on => {
+          setCard(project, on, currentTime(app));
+          app.save();
+          buildSheet(app);
+          drawOnce(app);
+        }),
         toggle('Move together', project.grouped !== false, on => {
           project.grouped = on;
           groupNote.textContent = groupText();
@@ -652,6 +734,32 @@ function layersTab(box, app) {
       ? ' Drag a corner to resize, just outside one to turn. Arrow keys nudge, Shift for bigger steps.'
       : '');
   groupNote.textContent = groupText();
+
+  // Keyframes for where the selection is and how big. They apply to
+  // everything that moves with it, so a grouped arrangement animates as one.
+  const selected = findLayer(project, app.state.selectedLayerId);
+  if (selected && selected.type !== 'photo' && !selected.locked) {
+    const members = () => movesWith(project, selected);
+    const keyRow = (label, keys) => {
+      const track = keyTrack(app, {
+        label,
+        pairs: () => members().flatMap(layer => keys.map(key => [layer.props, key])),
+      });
+      return h('div', { class: 'row', style: { flexDirection: 'column', alignItems: 'stretch', gap: '0' } },
+        h('div', { style: { display: 'flex', alignItems: 'center' } },
+          h('span', { class: 'row__main' }, label), track.diamond),
+        track.strip);
+    };
+    box.append(section(sectionHead('Animate', members().length > 1 ? `${selected.name} and group` : selected.name),
+      h('div', { class: 'group' },
+        keyRow('Position', ['x', 'y']),
+        keyRow('Size', ['scale']),
+        keyRow('Angle', ['rotation']),
+      ),
+      footnote('Drag the bar under the slide to a moment and tap \u25C6, then move or resize '
+        + 'the layer at another moment. Drag a keyframe along its strip to change when it happens.'),
+    ));
+  }
 
   // The list, topmost first, which is how it looks on the slide.
   const rows = h('div', { class: 'group' });

@@ -18,7 +18,7 @@
  * the selection ever reaches the exported video.
  */
 
-import { valueAt, movesWith } from './model.js';
+import { valueAt, movesWith, setValueAt, makeLayer } from './model.js';
 
 // --- Snapping ---------------------------------------------------------------
 // Lining a thing up by thumb is guesswork, so the last little bit is done for
@@ -74,9 +74,9 @@ function turnReach(stage) {
  *
  * @returns 'scale' | 'rotate' | null
  */
-export function handleAt(layer, project, stage, x, y) {
+export function handleAt(layer, project, stage, x, y, t = 0) {
   if (!layer || layer.locked || !layer.visible) return null;
-  const b = layerBounds(layer, project, stage);
+  const b = layerBounds(layer, project, stage, t);
 
   // Into the box's own frame, so a turned box is still four square corners.
   const angle = (-b.rotation * Math.PI) / 180;
@@ -110,8 +110,12 @@ export function handleAt(layer, project, stage, x, y) {
  * `k` resizes, `turn` is in degrees, `dx` and `dy` shift, all measured from
  * where the gesture started. Applying them from the start every time, rather
  * than accumulating, is what keeps a long drag from drifting.
+ *
+ * Values are written at `start.t`: a plain number stays a plain number, and
+ * a keyframed one gets a keyframe at that moment.
  */
 export function placeMembers(start, stage, k, turn, dx, dy) {
+  const t = start.t || 0;
   const radians = (turn * Math.PI) / 180;
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);
@@ -121,10 +125,11 @@ export function placeMembers(start, stage, k, turn, dx, dy) {
   for (const m of start.members) {
     const ox = m.x * stage.width - px;
     const oy = m.y * stage.height - py;
-    m.layer.props.x = (px + (ox * cos - oy * sin) * k) / stage.width + dx;
-    m.layer.props.y = (py + (ox * sin + oy * cos) * k) / stage.height + dy;
-    m.layer.props.scale = Math.max(0.02, m.scale * k);
-    m.layer.props.rotation = m.rotation + turn;
+    const props = m.layer.props;
+    setValueAt(props, 'x', t, (px + (ox * cos - oy * sin) * k) / stage.width + dx);
+    setValueAt(props, 'y', t, (py + (ox * sin + oy * cos) * k) / stage.height + dy);
+    setValueAt(props, 'scale', t, Math.max(0.02, m.scale * k));
+    setValueAt(props, 'rotation', t, m.rotation + turn);
   }
 }
 
@@ -132,12 +137,12 @@ export function placeMembers(start, stage, k, turn, dx, dy) {
  * Roughly where a layer sits, in slide pixels. Good enough to tap.
  * Returns the centre, the size, and the angle it is turned by.
  */
-export function layerBounds(layer, project, stage) {
+export function layerBounds(layer, project, stage, t = 0) {
   const p = layer.props;
-  const scale = valueAt(p.scale, 0);
-  const cx = valueAt(p.x, 0) * stage.width;
-  const cy = valueAt(p.y, 0) * stage.height;
-  const rotation = valueAt(p.rotation, 0);
+  const scale = valueAt(p.scale, t);
+  const cx = valueAt(p.x, t) * stage.width;
+  const cy = valueAt(p.y, t) * stage.height;
+  const rotation = valueAt(p.rotation, t);
 
   let w;
   let h;
@@ -150,7 +155,7 @@ export function layerBounds(layer, project, stage) {
       h = w;
       break;
     case 'text': {
-      const size = stage.width * valueAt(p.size, 0) * scale;
+      const size = stage.width * valueAt(p.size, t) * scale;
       const text = p.bind === 'title' ? project.song.title
         : p.bind === 'artist' ? project.song.artist
         : p.text || '';
@@ -169,7 +174,7 @@ export function layerBounds(layer, project, stage) {
       break;
     case 'card':
       w = stage.width * scale;
-      h = w * (valueAt(p.ratio, 0) || 1.2);
+      h = w * (valueAt(p.ratio, t) || 1.2);
       break;
     default:
       w = stage.width * scale;
@@ -234,6 +239,46 @@ export function fitToSlide(project, madeFor = null) {
   return project;
 }
 
+/**
+ * Put a glass card behind whatever furniture is on the slide, with room
+ * round it, or take it away. It goes straight above the photo, which is
+ * where the glass expects to be.
+ */
+export function setCard(project, on, t = 0) {
+  project.layers = project.layers.filter(l => l.type !== 'card');
+  if (!on) return project;
+
+  const stage = { width: project.aspect.w, height: project.aspect.h };
+  const furniture = project.layers.filter(l => l.type !== 'photo' && l.visible);
+  if (!furniture.length) return project;
+  let left = Infinity;
+  let right = -Infinity;
+  let top = Infinity;
+  let bottom = -Infinity;
+  for (const layer of furniture) {
+    const b = layerBounds(layer, project, stage, t);
+    const reach = Math.max(b.w, b.h) / 2;
+    const halfW = b.rotation ? reach : b.w / 2;
+    const halfH = b.rotation ? reach : b.h / 2;
+    left = Math.min(left, b.cx - halfW);
+    right = Math.max(right, b.cx + halfW);
+    top = Math.min(top, b.cy - halfH);
+    bottom = Math.max(bottom, b.cy + halfH);
+  }
+  const pad = stage.width * 0.06;
+  const w = right - left + pad * 2;
+  const h = bottom - top + pad * 2;
+  const card = makeLayer('card', 'Card', {
+    x: (left + right) / 2 / stage.width,
+    y: (top + bottom) / 2 / stage.height,
+    scale: w / stage.width,
+    ratio: h / w,
+  });
+  const at = project.layers.findIndex(l => l.type === 'photo') + 1;
+  project.layers.splice(at, 0, card);
+  return project;
+}
+
 function inside(bounds, x, y) {
   const angle = (-bounds.rotation * Math.PI) / 180;
   const dx = x - bounds.cx;
@@ -247,12 +292,12 @@ function inside(bounds, x, y) {
 }
 
 /** The topmost layer under this point that can actually be picked up. */
-export function layerAt(project, stage, x, y) {
+export function layerAt(project, stage, x, y, t = 0) {
   for (let i = project.layers.length - 1; i >= 0; i--) {
     const layer = project.layers[i];
     if (!layer.visible || layer.locked) continue;
     if (layer.type === 'cover' && !project.showCover) continue;
-    if (inside(layerBounds(layer, project, stage), x, y)) return layer;
+    if (inside(layerBounds(layer, project, stage, t), x, y)) return layer;
   }
   return null;
 }
@@ -267,12 +312,15 @@ export function layerAt(project, stage, x, y) {
  *   getSelectedId()   which layer is selected, or null
  *   onSelect(id)      called when the selection changes
  *   onChange()        called after any property has moved
+ *   getTime()         the moment the slide is showing, in seconds
+ *   onStart()         a finger or the mouse has gone down
  */
 export function attachGestures(element, api) {
   const pointers = new Map();
   let start = null;
   let snapped = { x: false, y: false, rotation: false };
   let grabbed = null;      // 'scale' | 'rotate' when a corner is being held
+  const now = () => (api.getTime ? api.getTime() : 0);
 
   const toStage = event => {
     const rect = element.getBoundingClientRect();
@@ -305,15 +353,16 @@ export function attachGestures(element, api) {
    */
   const snapshotOf = layer => {
     const project = api.getProject();
+    const t = now();
 
     // Everything this gesture moves, with where it started. For a layer on
     // its own that list is just the layer.
     const members = movesWith(project, layer).map(other => ({
       layer: other,
-      x: valueAt(other.props.x, 0),
-      y: valueAt(other.props.y, 0),
-      scale: valueAt(other.props.scale, 0),
-      rotation: valueAt(other.props.rotation, 0),
+      x: valueAt(other.props.x, t),
+      y: valueAt(other.props.y, t),
+      scale: valueAt(other.props.scale, t),
+      rotation: valueAt(other.props.rotation, t),
     }));
 
     // A pinch or a twist turns the whole arrangement about its middle, which
@@ -328,10 +377,10 @@ export function attachGestures(element, api) {
         && !members.some(m => m.layer === other),
     );
     return {
-      layer, members, pivotX, pivotY,
+      layer, members, pivotX, pivotY, t,
       lead: members.find(m => m.layer === layer) || members[0],
-      xTargets: [0.5, ...others.map(other => valueAt(other.props.x, 0))],
-      yTargets: [0.5, ...others.map(other => valueAt(other.props.y, 0))],
+      xTargets: [0.5, ...others.map(other => valueAt(other.props.x, t))],
+      yTargets: [0.5, ...others.map(other => valueAt(other.props.y, t))],
     };
   };
 
@@ -382,17 +431,17 @@ export function attachGestures(element, api) {
     const project = api.getProject();
     const stage = api.getStage();
     const layer = selectedLayer();
-    const grab = handleAt(layer, project, stage, point.x, point.y);
+    const grab = handleAt(layer, project, stage, point.x, point.y, now());
 
     if (grab === 'rotate') { element.style.cursor = 'grab'; return; }
     if (grab === 'scale') {
       // Which way the arrow lies: the corner's own diagonal.
-      const b = layerBounds(layer, project, stage);
+      const b = layerBounds(layer, project, stage, now());
       const same = (point.x - b.cx) * (point.y - b.cy) >= 0;
       element.style.cursor = same ? 'nwse-resize' : 'nesw-resize';
       return;
     }
-    element.style.cursor = layerAt(project, stage, point.x, point.y) ? 'move' : 'default';
+    element.style.cursor = layerAt(project, stage, point.x, point.y, now()) ? 'move' : 'default';
   };
 
   /**
@@ -416,14 +465,16 @@ export function attachGestures(element, api) {
     // gesture must still work rather than falling over halfway through.
     pointers.set(event.pointerId, toStage(event));
     try { element.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
+    // Moving something means moving it at one moment, so time stops first.
+    if (api.onStart) api.onStart();
 
     if (pointers.size === 1) {
       const point = [...pointers.values()][0];
       // A corner of what is already selected is taken first, so reaching for
       // a handle never picks up whatever happens to sit behind it.
-      grabbed = handleAt(selectedLayer(), api.getProject(), api.getStage(), point.x, point.y);
+      grabbed = handleAt(selectedLayer(), api.getProject(), api.getStage(), point.x, point.y, now());
       if (!grabbed) {
-        const hit = layerAt(api.getProject(), api.getStage(), point.x, point.y);
+        const hit = layerAt(api.getProject(), api.getStage(), point.x, point.y, now());
         api.onSelect(hit ? hit.id : null);
       }
     }
@@ -478,16 +529,18 @@ export function attachGestures(element, api) {
     // group, so nothing inside it shifts relative to anything else.
     place(k, turn, dx, dy);
     const lead = start.lead.layer.props;
+    const leadX = valueAt(lead.x, start.t);
+    const leadY = valueAt(lead.y, start.t);
     // A handle is not moving the layer, so there is nothing to line up with.
     const lining = start.mode === 'one' || start.mode === 'two';
-    const pullX = lining ? pullTo(lead.x, start.xTargets, SNAP_REACH) : 0;
-    const pullY = lining ? pullTo(lead.y, start.yTargets, SNAP_REACH) : 0;
+    const pullX = lining ? pullTo(leadX, start.xTargets, SNAP_REACH) : 0;
+    const pullY = lining ? pullTo(leadY, start.yTargets, SNAP_REACH) : 0;
     if (pullX || pullY) place(k, turn, dx + pullX, dy + pullY);
 
     snapped = {
       x: pullX !== 0,
       y: pullY !== 0,
-      rotation: turn !== 0 && Math.abs(lead.rotation % SNAP_ANGLE) < 0.001,
+      rotation: turn !== 0 && Math.abs(valueAt(lead.rotation, start.t) % SNAP_ANGLE) < 0.001,
     };
 
     api.onChange();
