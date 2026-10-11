@@ -813,6 +813,13 @@ button.row:active { background: var(--fill-strong); transition: none; }
   transform: rotate(45deg);
   transition: transform var(--t-ui) var(--ease);
 }
+/* The picked keyframe: larger, with a ring, so Delete is clearly aimed. */
+.keys__mark.is-picked::after {
+  inset: 5px;
+  box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 3.5px var(--tint);
+}
+.keys { cursor: copy; }
+.keys__mark { cursor: grab; }
 .keys__mark:active::after { transform: rotate(45deg) scale(0.8); transition-duration: var(--t-press); }
 .keys__head {
   position: absolute;

@@ -445,6 +445,13 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.15.0** - Glassier glass: the backdrop is saturated and brightened, bends
+  near the rim as a thick pane would, and the card has a sharp specular line
+  along the top, a fainter one along the bottom, a brighter rim, a diagonal
+  gloss and a thin dark outline. The card moves on its own when held, its
+  corners reshape it freely, and Width and Height sliders size it. On the
+  keyframe strips a tap on empty space adds a keyframe, a tap on one picks
+  it, and Delete removes the picked one.
 - **0.14.0** - The glass card's corner roundness and blur are sliders (and
   keyframeable) under Layers while the card is on. A clean-up pass: Animate
   comes first when a layer is selected, the sheet keeps its place when it

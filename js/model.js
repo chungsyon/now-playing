@@ -336,7 +336,9 @@ export function movesWith(project, layer) {
   // Older drafts have no flag. Grouping is the default, so only an explicit
   // false turns it off.
   const grouped = project.grouped !== false;
-  if (!grouped || layer.type === 'photo') return [layer];
+  // The card is the frame, not part of the picture in it: taking hold of the
+  // card moves the card alone, while moving the rest still carries it.
+  if (!grouped || layer.type === 'photo' || layer.type === 'card') return [layer];
   // The layer itself always belongs, even hidden: what is done to the
   // selection must reach the selection.
   return project.layers.filter(

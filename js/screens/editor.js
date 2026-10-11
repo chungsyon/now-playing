@@ -52,6 +52,26 @@ let playButtonRef = null;
 let timeWatchers = [];
 // Strips that need redrawing when a gesture records a keyframe.
 let keyRefreshers = [];
+// The keyframe picked on a strip, held by reference: [{ holder, key, frame }].
+// Delete or Backspace removes it.
+let pickedKeys = null;
+
+function deletePickedKeys(app) {
+  if (!pickedKeys) return false;
+  for (const { holder, key, frame } of pickedKeys) {
+    const prop = holder[key];
+    if (!isKeyed(prop)) continue;
+    const index = prop.keyframes.indexOf(frame);
+    if (index >= 0) prop.keyframes.splice(index, 1);
+    // The last one gone: back to a plain value, the one it held.
+    if (prop.keyframes.length === 0) holder[key] = frame.value;
+  }
+  pickedKeys = null;
+  app.save();
+  for (const refresh of keyRefreshers) refresh();
+  drawOnce(app);
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 
@@ -140,14 +160,27 @@ export async function enter(root, app) {
   // canvas means it works without clicking the slide first, which is what
   // anyone with a keyboard expects.
   onKey = event => {
+    // Not while something is being typed into.
+    const target = event.target;
+    const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)
+      && target.type !== 'range' && target.type !== 'checkbox';
+    if (typing) return;
+
+    if ((event.key === 'Delete' || event.key === 'Backspace') && deletePickedKeys(app)) {
+      event.preventDefault();
+      return;
+    }
+    if (event.key === 'Escape' && pickedKeys) {
+      pickedKeys = null;
+      for (const refresh of keyRefreshers) refresh();
+      return;
+    }
+
     const STEPS = {
       ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
     };
     const step = STEPS[event.key];
     if (!step) return;
-    // Not while something is being typed into.
-    const target = event.target;
-    if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
     if (!app.state.selectedLayerId) return;
 
     const far = event.shiftKey ? 0.02 : 0.004;
@@ -182,6 +215,7 @@ export function leave() {
   playButtonRef = null;
   timeWatchers = [];
   keyRefreshers = [];
+  pickedKeys = null;
   if (gestures) gestures.destroy();
   gestures = null;
   if (stage) stage.dispose();
@@ -363,19 +397,50 @@ function keyTrack(app, { label, pairs, fallback = 0, onChange = () => {} }) {
     const prop = leadProp();
     strip.hidden = !isKeyed(prop);
     if (strip.hidden) return;
-    for (const frame of prop.keyframes) strip.append(markFor(frame.t));
+    for (const frame of prop.keyframes) strip.append(markFor(frame));
     strip.append(head);
     watch(currentTime(app));
   }
 
+  // The keyframes at one moment, across every value this track moves.
+  const framesAt = t => pairs().map(([holder, key]) => {
+    const prop = holder[key];
+    const index = keyIndexAt(prop, t);
+    return index >= 0 ? { holder, key, prop, frame: prop.keyframes[index] } : null;
+  }).filter(Boolean);
+
+  const pick = frames => {
+    pickedKeys = frames;
+    for (const refresh of keyRefreshers) refresh();
+  };
+
+  // A tap on the strip where there is no keyframe makes one there, holding
+  // the value as it is at that moment, and picks it.
+  strip.addEventListener('pointerdown', event => {
+    if (event.target !== strip) return;
+    const rect = strip.getBoundingClientRect();
+    const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / (rect.width || 1)));
+    const t = Math.round(fraction * app.state.project.loopSeconds * 10) / 10;
+    pause();
+    for (const [holder, key] of pairs()) {
+      if (keyIndexAt(holder[key], t) < 0) toggleKeyAt(holder, key, t, fallback);
+    }
+    seek(app, t);
+    pickedKeys = framesAt(t);
+    changed();
+  });
+
   // A keyframe on the strip. It follows the finger 1:1 from the moment it
   // moves; a touch that never moves is a tap, and goes to it.
-  function markFor(t) {
+  function markFor(leadFrame) {
+    const t = leadFrame.t;
     const loop = app.state.project.loopSeconds;
+    const picked = !!pickedKeys && pickedKeys.some(item => item.frame === leadFrame);
     const mark = h('button', {
-      class: 'keys__mark',
+      class: 'keys__mark' + (picked ? ' is-picked' : ''),
       type: 'button',
-      'aria-label': `${label} keyframe at ${t.toFixed(1)} seconds. Click to delete, drag to move`,
+      'aria-pressed': String(picked),
+      'aria-label': `${label} keyframe at ${t.toFixed(1)} seconds. Tap to pick, drag to move`,
       style: { left: `${Math.min(100, (t / loop) * 100)}%` },
     });
     let at = t;
@@ -390,11 +455,7 @@ function keyTrack(app, { label, pairs, fallback = 0, onChange = () => {} }) {
       try { mark.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
       downX = event.clientX;
       dragging = false;
-      carried = pairs().map(([holder, key]) => {
-        const prop = holder[key];
-        const index = keyIndexAt(prop, at);
-        return index >= 0 ? { prop, frame: prop.keyframes[index] } : null;
-      }).filter(Boolean);
+      carried = framesAt(at);
       pause();
     });
     const settle = () => {
@@ -429,13 +490,15 @@ function keyTrack(app, { label, pairs, fallback = 0, onChange = () => {} }) {
     mark.addEventListener('pointerup', () => {
       if (!held) return;
       held = false;
+      // Picked either way: a tap picks it and goes to it, a drag leaves the
+      // one just moved picked.
       if (!dragging) {
-        // A click, not a drag: take the keyframe away. Undo brings it back.
-        for (const [holder, key] of pairs()) {
-          if (keyIndexAt(holder[key], at) >= 0) toggleKeyAt(holder, key, at, fallback);
-        }
-        changed();
-      } else settle();
+        seek(app, at);
+        pick(carried);
+      } else {
+        pickedKeys = carried;
+        settle();
+      }
     });
     return mark;
   }
@@ -777,9 +840,9 @@ function layersTab(box, app) {
           format: value => `${Math.round(value * 100)}%`,
         })),
       ),
-      footnote('Drag the bar under the slide to a moment and tap \u25C6. At another moment, move, '
-        + 'resize or turn the layer and a keyframe is added. Drag a keyframe to retime it; '
-        + 'click it to delete it.'),
+      footnote('Tap \u25C6, or tap a strip, to add a keyframe; at another moment move, resize or turn '
+        + 'the layer and another is added. Tap a keyframe to pick it, drag it to retime it, and '
+        + 'press Delete to remove it, or tap the filled \u25C6.'),
     ));
   }
 
@@ -807,6 +870,20 @@ function layersTab(box, app) {
 
     card ? section('Glass card',
       h('div', { class: 'group group--pad' },
+        // Size and shape apart from what is on it. On the slide, drag the
+        // card to move it alone and drag a corner to reshape it.
+        keyedSlider(app, {
+          label: 'Width',
+          holder: card.props, key: 'scale',
+          min: 0.2, max: 1.2, step: 0.005, fallback: 0.72,
+          format: value => `${Math.round(value * 100)}%`,
+        }),
+        keyedSlider(app, {
+          label: 'Height',
+          holder: card.props, key: 'ratio',
+          min: 0.3, max: 2.5, step: 0.01, fallback: 1.2,
+          format: value => `${Math.round(value * 100)}% of width`,
+        }),
         keyedSlider(app, {
           label: 'Corner roundness',
           holder: card.props, key: 'radius',
@@ -822,6 +899,8 @@ function layersTab(box, app) {
           format: value => String(value),
         }),
       ),
+      footnote('On the slide, drag the card to move it on its own, and drag one of its '
+        + 'corners to change its shape.'),
     ) : null,
   );
   // Written into rather than rebuilt, so the switch keeps sliding.

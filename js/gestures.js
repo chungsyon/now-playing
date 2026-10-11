@@ -461,7 +461,9 @@ export function attachGestures(element, api) {
       ...base,
       pivotX: base.lead.x,
       pivotY: base.lead.y,
-      mode: grabbed,
+      // A card's corner changes its width and height apart, so its shape is
+      // whatever you drag it to. Everything else keeps its proportions.
+      mode: grabbed === 'scale' && layer.type === 'card' ? 'stretch' : grabbed,
       midX: only.x,
       midY: only.y,
       grabRadius: Math.hypot(only.x - px, only.y - py),
@@ -521,7 +523,13 @@ export function attachGestures(element, api) {
       // A corner of what is already selected is taken first, so reaching for
       // a handle never picks up whatever happens to sit behind it.
       grabbed = handleAt(selectedLayer(), api.getProject(), api.getStage(), point.x, point.y, now());
-      if (!grabbed) {
+      // A selected card keeps hold anywhere inside it. It sits under
+      // everything else, so otherwise almost every touch on it would land on
+      // the cover or the words instead.
+      const held = selectedLayer();
+      const keepCard = !grabbed && held && held.type === 'card'
+        && inside(layerBounds(held, api.getProject(), api.getStage(), now()), point.x, point.y);
+      if (!grabbed && !keepCard) {
         const hit = layerAt(api.getProject(), api.getStage(), point.x, point.y, now());
         api.onSelect(hit ? hit.id : null);
       }
@@ -544,6 +552,25 @@ export function attachGestures(element, api) {
     let turn = 0;
     let dx = 0;
     let dy = 0;
+
+    if (start.mode === 'stretch') {
+      // The corner goes where the pointer is; the opposite corner mirrors it,
+      // so the card stays centred where it was.
+      const only = [...pointers.values()][0];
+      const angle = (-start.lead.rotation * Math.PI) / 180;
+      const ox = only.x - start.pivotX * stage.width;
+      const oy = only.y - start.pivotY * stage.height;
+      const localX = ox * Math.cos(angle) - oy * Math.sin(angle);
+      const localY = ox * Math.sin(angle) + oy * Math.cos(angle);
+      const w = Math.max(stage.width * 0.08, Math.abs(localX) * 2);
+      const h = Math.max(stage.width * 0.08, Math.abs(localY) * 2);
+      const props = start.lead.layer.props;
+      setValueAt(props, 'scale', start.t, w / stage.width);
+      setValueAt(props, 'ratio', start.t, h / w);
+      api.onChange();
+      event.preventDefault();
+      return;
+    }
 
     if (start.mode === 'two' && pointers.size >= 2) {
       const now = twoFingerState();

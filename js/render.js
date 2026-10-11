@@ -808,8 +808,9 @@ function drawControls(ctx, layer, project, t, stage) {
 }
 
 /** roundRect arrived in Safari 16; older phones get the same shape by hand. */
-function roundedRect(c, x, y, w, h, r) {
-  c.beginPath();
+function roundedRect(c, x, y, w, h, r, fresh = true) {
+  if (fresh) c.beginPath();
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
   if (c.roundRect) {
     c.roundRect(x, y, w, h, r);
     return;
@@ -855,7 +856,12 @@ function glassBehind(stage, project, t, pixels) {
     stage.glass.width = stage.width;
     stage.glass.height = stage.height;
   }
-  stage.glass.getContext('2d').drawImage(blurred, 0, 0);
+  // Glass lifts the colour of what is behind it rather than dulling it:
+  // the frosted copy is a little more saturated and a little brighter.
+  const g = stage.glass.getContext('2d');
+  g.filter = 'saturate(1.6) brightness(1.08)';
+  g.drawImage(blurred, 0, 0);
+  g.filter = 'none';
   stage.glassKey = key;
   return stage.glass;
 }
@@ -904,8 +910,30 @@ function drawCard(ctx, layer, project, t, stage) {
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.drawImage(glass, 0, 0);
       c.setTransform(matrix);
+
+      // Refraction. A real pane is thicker at its rim and bends what is
+      // behind it there, so the backdrop is drawn magnified in bands that
+      // grow stronger toward the edge, about the card's own middle.
+      // Six thin bands, so the bend reads as a curve rather than as steps.
+      const rim = Math.min(w, h) * 0.08;
+      const cx = matrix.e;
+      const cy = matrix.f;
+      const BANDS = 6;
+      for (let depth = BANDS; depth >= 1; depth--) {
+        const zoom = 1 + 0.11 * Math.pow(1 - (depth - 1) / BANDS, 2);
+        const inset = (rim * (depth - 1)) / BANDS;
+        const inner = (rim * depth) / BANDS;
+        c.save();
+        roundedRect(c, -w / 2 + inset, -h / 2 + inset, w - inset * 2, h - inset * 2, r - inset);
+        roundedRect(c, -w / 2 + inner, -h / 2 + inner, w - inner * 2, h - inner * 2, r - inner, false);
+        c.clip('evenodd');
+        c.setTransform(zoom, 0, 0, zoom, cx - zoom * cx, cy - zoom * cy);
+        c.drawImage(glass, 0, 0);
+        c.restore();
+      }
+
       shape();
-      c.fillStyle = withAlpha(tones.deep, 0.22);
+      c.fillStyle = withAlpha(tones.deep, 0.16);
       c.fill();
       c.restore();
     }
@@ -913,27 +941,58 @@ function drawCard(ctx, layer, project, t, stage) {
     // Frost: the pane is lighter than what is behind it, which is what makes
     // it read as glass on a dark photo instead of vanishing into it.
     shape();
-    c.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    c.fillStyle = 'rgba(255, 255, 255, 0.08)';
     c.fill();
+
+    c.save();
+    shape();
+    c.clip();
 
     // Light on the face of the glass, strongest at the top.
-    const sheen = c.createLinearGradient(0, -h / 2, 0, h / 2);
-    sheen.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
-    sheen.addColorStop(0.35, 'rgba(255, 255, 255, 0.04)');
-    sheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    shape();
-    c.fillStyle = sheen;
-    c.fill();
+    const face = c.createLinearGradient(0, -h / 2, 0, h / 2);
+    face.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
+    face.addColorStop(0.4, 'rgba(255, 255, 255, 0.02)');
+    face.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
+    c.fillStyle = face;
+    c.fillRect(-w / 2, -h / 2, w, h);
 
-    // The edge: white catching the light at the top, the cover's colour
-    // further down.
-    const edge = c.createLinearGradient(0, -h / 2, 0, h / 2);
-    edge.addColorStop(0, 'rgba(255, 255, 255, 0.85)');
-    edge.addColorStop(0.3, withAlpha(tones.accent, 0.7));
-    edge.addColorStop(1, withAlpha(tones.accent, 0.4));
-    c.lineWidth = Math.max(1.5, w * 0.006);
-    c.strokeStyle = edge;
+    // A gloss: one soft diagonal streak across the upper corner, the
+    // reflection of a light somewhere above and to the left.
+    const gloss = c.createLinearGradient(-w / 2, -h / 2, w * 0.1, h * 0.15);
+    gloss.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
+    gloss.addColorStop(0.45, 'rgba(255, 255, 255, 0.07)');
+    gloss.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+    c.fillStyle = gloss;
+    c.fillRect(-w / 2, -h / 2, w, h);
+
+    // The rim brightens all the way round, as glass does where you look
+    // through more of it. Stroked on the edge and clipped, so only the
+    // inside half shows.
+    c.lineWidth = Math.min(w, h) * 0.07;
+    c.strokeStyle = 'rgba(255, 255, 255, 0.05)';
     shape();
+    c.stroke();
+
+    // Specular highlights: a sharp bright line along the top, and a fainter
+    // one along the bottom where light comes back out through the glass.
+    const spec = c.createLinearGradient(0, -h / 2, 0, h / 2);
+    spec.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
+    spec.addColorStop(0.12, 'rgba(255, 255, 255, 0.25)');
+    spec.addColorStop(0.5, 'rgba(255, 255, 255, 0.04)');
+    spec.addColorStop(0.88, withAlpha(tones.accent, 0.25));
+    spec.addColorStop(1, 'rgba(255, 255, 255, 0.5)');
+    c.lineWidth = Math.max(2, w * 0.009);
+    c.strokeStyle = spec;
+    shape();
+    c.stroke();
+    c.restore();
+
+    // A thin dark line just outside, so the pane has an edge even on a
+    // light photo.
+    c.lineWidth = Math.max(1, w * 0.003);
+    c.strokeStyle = 'rgba(0, 0, 0, 0.22)';
+    roundedRect(c, -w / 2 - c.lineWidth, -h / 2 - c.lineWidth,
+      w + c.lineWidth * 2, h + c.lineWidth * 2, r + c.lineWidth);
     c.stroke();
   });
 }
