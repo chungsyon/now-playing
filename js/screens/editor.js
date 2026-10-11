@@ -372,7 +372,7 @@ function keyTrack(app, { label, pairs, fallback = 0, onChange = () => {} }) {
     const mark = h('button', {
       class: 'keys__mark',
       type: 'button',
-      'aria-label': `${label} keyframe at ${t.toFixed(1)} seconds`,
+      'aria-label': `${label} keyframe at ${t.toFixed(1)} seconds. Click to delete, drag to move`,
       style: { left: `${Math.min(100, (t / loop) * 100)}%` },
     });
     let at = t;
@@ -403,8 +403,13 @@ function keyTrack(app, { label, pairs, fallback = 0, onChange = () => {} }) {
     mark.addEventListener('pointerup', () => {
       if (!held) return;
       held = false;
-      if (dragging) changed();
-      else seek(app, at);
+      if (!dragging) {
+        // A click, not a drag: take the keyframe away. Undo brings it back.
+        for (const [holder, key] of pairs()) {
+          if (keyIndexAt(holder[key], at) >= 0) toggleKeyAt(holder, key, at, fallback);
+        }
+      }
+      changed();
     });
     return mark;
   }
@@ -426,16 +431,22 @@ function keyTrack(app, { label, pairs, fallback = 0, onChange = () => {} }) {
   return { diamond, strip, paintMarks };
 }
 
-/** A slider whose value can be keyframed. */
-function keyedSlider(app, { label, holder, key, min, max, step, fallback, format }) {
-  const read = t => valueAt(holder[key], t) ?? fallback;
+/**
+ * A slider whose value can be keyframed. One value (`holder`, `key`), or
+ * several moved together (`pairs`), such as the opacity of a whole group.
+ */
+function keyedSlider(app, { label, holder, key, pairs, min, max, step, fallback, format }) {
+  const all = pairs || (() => [[holder, key]]);
+  const read = t => { const [h0, k0] = all()[0]; return valueAt(h0[k0], t) ?? fallback; };
+  const keyed = () => { const [h0, k0] = all()[0]; return isKeyed(h0[k0]); };
   const row = sliderRow({
     label, min, max, step,
     value: read(currentTime(app)),
     format,
     onInput: value => {
       pause();
-      setValueAt(holder, key, currentTime(app), value);
+      const t = currentTime(app);
+      for (const [h0, k0] of all()) setValueAt(h0, k0, t, value);
       track.paintMarks();
       app.save();
       drawOnce(app);
@@ -443,12 +454,12 @@ function keyedSlider(app, { label, holder, key, min, max, step, fallback, format
   });
   const track = keyTrack(app, {
     label, fallback,
-    pairs: () => [[holder, key]],
+    pairs: all,
     onChange: () => row.set(read(currentTime(app))),
   });
   row.head.append(track.diamond);
   // While it plays, the slider follows the keyframes.
-  timeWatchers.push(t => { if (isKeyed(holder[key])) row.set(read(t)); });
+  timeWatchers.push(t => { if (keyed()) row.set(read(t)); });
   return h('div', {}, row, track.strip);
 }
 
@@ -754,10 +765,17 @@ function layersTab(box, app) {
       h('div', { class: 'group' },
         keyRow('Position', ['x', 'y']),
         keyRow('Size', ['scale']),
-        keyRow('Angle', ['rotation']),
+        keyRow('Rotation', ['rotation']),
+        h('div', { class: 'group--pad' }, keyedSlider(app, {
+          label: 'Opacity',
+          pairs: () => members().map(layer => [layer.props, 'opacity']),
+          min: 0, max: 1, step: 0.01, fallback: 1,
+          format: value => `${Math.round(value * 100)}%`,
+        })),
       ),
-      footnote('Drag the bar under the slide to a moment and tap \u25C6, then move or resize '
-        + 'the layer at another moment. Drag a keyframe along its strip to change when it happens.'),
+      footnote('Drag the bar under the slide to a moment and tap \u25C6, then move, resize or '
+        + 'turn the layer at another moment. Drag a keyframe to change when it happens; '
+        + 'click one to delete it.'),
     ));
   }
 

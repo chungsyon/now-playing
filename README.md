@@ -445,6 +445,10 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.13.0** - Undo and redo: buttons beside the back button in the editor,
+  and ⌘Z / Ctrl+Z, ⇧⌘Z / Ctrl+Y. A drag or a slider pull is one step.
+  Opacity joins position, size and rotation as something to keyframe, and a
+  click on a keyframe deletes it.
 - **0.12.0** - Position, size and angle can be keyframed: select a layer and
   use the Animate rows under Layers, then drag or pinch it at another moment.
   Keyframes slide along their strip to change when they happen. A Glass card

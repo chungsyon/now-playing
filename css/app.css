@@ -381,6 +381,11 @@ button.row:active { background: var(--fill-strong); transition: none; }
   background: transparent;
   color: var(--tint);
 }
+/* Undo and redo in the editor's bar: a little narrower than a full button,
+   so they fit beside the back button on the smallest phone. */
+.btn--history { width: 36px; min-width: 36px; }
+.btn--history .icon { width: 20px; height: 20px; }
+.btn--history:disabled { color: var(--label-3); opacity: 1; }
 .btn--back { padding: 0 8px 0 0; font-weight: 400; background: transparent; gap: 2px; }
 .btn--back .icon { width: 24px; height: 24px; }
 

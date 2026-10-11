@@ -6,7 +6,7 @@
  * outlives the screen.
  */
 
-import { h, clear, icon, toast, decodeImage } from './ui.js';
+import { h, clear, icon, iconButton, toast, decodeImage } from './ui.js';
 import { ASPECTS, createProject, newId, applyTemplate } from './model.js';
 import { extractPalette, dedupeHex } from './color.js';
 import { putDraft, getDraft, debounce } from './db.js';
@@ -33,10 +33,88 @@ const state = {
   lastQuery: '',
 };
 
+// ---------------------------------------------------------------------------
+// Undo and redo
+// ---------------------------------------------------------------------------
+// The project is plain JSON, so a step in the history is just a copy of it.
+// A copy is taken once things have been still for a moment, which makes one
+// drag, one slider pull or a burst of arrow keys a single step.
+
+const HISTORY_LIMIT = 100;
+let past = [];
+let future = [];
+
+function snapshot() {
+  return JSON.stringify(state.project);
+}
+
+/** Start a fresh history for the project that has just been opened. */
+function resetHistory() {
+  past = state.project ? [snapshot()] : [];
+  future = [];
+  syncHistoryButtons();
+}
+
+const checkpoint = debounce(() => {
+  if (!state.project) return;
+  const now = snapshot();
+  if (now === past[past.length - 1]) return;
+  past.push(now);
+  if (past.length > HISTORY_LIMIT) past.shift();
+  future = [];
+  syncHistoryButtons();
+}, 400);
+
+function restore(json) {
+  state.project = JSON.parse(json);
+  if (!state.project.layers.some(l => l.id === state.selectedLayerId)) state.selectedLayerId = null;
+  buildTopbar();
+  if (state.screen === 'editor') editor.rebuild(app);
+  else go(state.screen);
+  saveNow();
+}
+
+function undo() {
+  checkpoint.flush();              // a change still settling is a step too
+  if (past.length < 2) return;
+  future.push(past.pop());
+  restore(past[past.length - 1]);
+  syncHistoryButtons();
+}
+
+function redo() {
+  checkpoint.flush();
+  if (!future.length) return;
+  const next = future.pop();
+  past.push(next);
+  restore(next);
+  syncHistoryButtons();
+}
+
+let undoButton = null;
+let redoButton = null;
+function syncHistoryButtons() {
+  if (undoButton) undoButton.disabled = past.length < 2;
+  if (redoButton) redoButton.disabled = future.length === 0;
+}
+
+const saveSoon = debounce(saveNow, 700);
+/** Every change goes through here: saved to the device, and into the history. */
+function save() {
+  saveSoon();
+  checkpoint();
+}
+save.flush = () => {
+  checkpoint.flush();
+  return saveSoon.flush();
+};
+
 const app = {
   state,
   go,
-  save: debounce(saveNow, 700),
+  save,
+  undo,
+  redo,
   saveNow,
   startWithPhoto,
   openDraft,
@@ -100,7 +178,15 @@ function buildTopbar() {
     state.screen === 'editor' ? null : h('span', {}, TITLES[target])));
   }
 
+  undoButton = null;
+  redoButton = null;
   if (state.screen === 'editor') {
+    // Undo and redo sit by the back button, where a thumb already is.
+    undoButton = iconButton('arrow-u-up-left', 'Undo', undo);
+    redoButton = iconButton('arrow-u-up-right', 'Redo', redo);
+    for (const b of [undoButton, redoButton]) b.classList.add('btn--history');
+    left.append(undoButton, redoButton);
+    syncHistoryButtons();
     middle = editor.templateSwitcher(app);
     middle.style.minWidth = '150px';
     right.append(h('button', {
@@ -153,6 +239,7 @@ async function startWithPhoto(file) {
     state.project = fitToSlide(createProject({ aspect: aspectFor(image) }));
     state.photoPalette = extractPalette(image, 5);
     state.project.palette = state.photoPalette.slice();
+    resetHistory();
 
     await saveNow();
     go('song');
@@ -182,6 +269,7 @@ async function startFromStyle(style) {
     state.project.palette = palette;
     // The style may have been made on a different shape of slide.
     fitToSlide(state.project, style.project.layoutAspect || style.project.aspect);
+    resetHistory();
     await saveNow();
     go('song');
   }, { once: true });
@@ -205,6 +293,7 @@ async function openDraft(id) {
   state.previewTime = 0;
   state.photoPalette = state.media.photo ? extractPalette(state.media.photo, 5) : [];
   refreshPalette();
+  resetHistory();
   go('editor');
 }
 
@@ -303,6 +392,18 @@ async function boot() {
       console.warn('Offline support is unavailable:', error);
     });
   }
+
+  // ⌘Z / Ctrl+Z undoes, ⇧⌘Z or Ctrl+Y redoes. Inside a text field the
+  // field keeps them, for undoing typing.
+  window.addEventListener('keydown', event => {
+    if (!(event.metaKey || event.ctrlKey) || !state.project) return;
+    const target = event.target;
+    if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName) && target.type !== 'range'
+      && target.type !== 'checkbox') return;
+    const key = event.key.toLowerCase();
+    if (key === 'z' && !event.shiftKey) { event.preventDefault(); undo(); }
+    else if ((key === 'z' && event.shiftKey) || key === 'y') { event.preventDefault(); redo(); }
+  });
 
   // Do not lose work if the app is closed mid-edit.
   window.addEventListener('pagehide', () => { app.save.flush(); });
