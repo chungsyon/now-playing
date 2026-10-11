@@ -455,6 +455,28 @@ function layersTab(box, app) {
   };
   paintSwatches();
 
+  // How soft the photo is, shown only while it is the blurred background.
+  // Written into rather than rebuilt, so the drag never drops.
+  const blurSpec = EFFECTS.blur.params.radius;
+  const blurBox = h('div', { class: 'group group--pad', hidden: backgroundValue !== 'blur' });
+  const paintBlur = () => {
+    clear(blurBox);
+    const blur = photo.effects.find(e => e.type === 'blur');
+    if (!blur) return;
+    blurBox.append(sliderRow({
+      label: 'Blur amount',
+      min: blurSpec.min, max: blurSpec.max, step: blurSpec.step,
+      value: blur.params.radius ?? blurSpec.default,
+      format: value => String(value),
+      onInput: value => {
+        blur.params.radius = value;
+        app.save();
+        drawOnce(app);
+      },
+    }));
+  };
+  paintBlur();
+
   const background = segmented([
     { value: 'photo', label: 'Photo' },
     { value: 'blur', label: 'Blurred' },
@@ -467,8 +489,10 @@ function layersTab(box, app) {
       photo.props.solidColor = asRoomColour(project.palette[0] || '#2A2724');
     }
     swatches.hidden = value !== 'solid';
+    blurBox.hidden = value !== 'blur';
     background.select(value);
     paintSwatches();
+    paintBlur();
     app.save();
     drawOnce(app);
   }, 'Background');
@@ -481,7 +505,7 @@ function layersTab(box, app) {
   });
 
   box.append(
-    section('Background', h('div', { class: 'section', style: { gap: '10px' } }, background, swatches)),
+    section('Background', h('div', { class: 'section', style: { gap: '10px' } }, background, blurBox, swatches)),
 
     section('Arrange',
       h('div', { class: 'group' },

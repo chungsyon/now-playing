@@ -125,6 +125,7 @@ export const LAYER_LABELS = {
   text: 'Text',
   progressBar: 'Progress',
   controls: 'Controls',
+  card: 'Card',
 };
 
 // ---------------------------------------------------------------------------
@@ -173,11 +174,11 @@ export const TEMPLATES = {
         makeLayer('cover', 'Sleeve', { x: 0.36, y: 0.64, scale: 0.44, shadow: 0.55 }),
         makeLayer('text', 'Title', {
           bind: 'title', x: 0.5, y: 0.875, size: 0.054,
-          font: 'serif', align: 'center', tracking: 0, color: '#F3EFE9',
+          font: 'serif', align: 'center', tracking: 0,
         }),
         makeLayer('text', 'Artist', {
           bind: 'artist', x: 0.5, y: 0.928, size: 0.026,
-          font: 'sans', align: 'center', tracking: 0.16, uppercase: true, color: '#A8A097',
+          font: 'sans', align: 'center', tracking: 0.16, uppercase: true,
         }),
       ];
     },
@@ -186,29 +187,35 @@ export const TEMPLATES = {
   player: {
     id: 'player',
     label: 'Player',
-    description: 'A large cover over your blurred photo, with the time running underneath.',
-    build() {
+    description: 'A large cover on a pane of glass over your blurred photo, with the time running underneath.',
+    // Laid out for the slide it is going on, so the card holds everything on
+    // any shape. Sizes are fractions of the width, so the spacing is worked
+    // out in widths too, then turned into fractions of the height.
+    fitsAnyShape: true,
+    build(aspect = ASPECTS[1]) {
+      const across = aspect.w / aspect.h;
+      // Distance from the middle of the slide, in slide widths.
+      const at = offset => 0.5 + offset * across;
+      const k = 0.93;
       return [
         makeLayer('photo', 'Photo', { mode: 'photo' }, {
           locked: true,
           effects: [{ type: 'blur', params: { radius: 34 } }],
         }),
-        // Sizes are fractions of the WIDTH, so a square slide is the tight
-        // case: these numbers are chosen to clear each other at 1:1 and to
-        // simply have more air on taller shapes.
-        makeLayer('cover', 'Cover', { x: 0.5, y: 0.34, scale: 0.58, shadow: 0.6 }),
+        makeLayer('card', 'Card', { x: 0.5, y: at(0), scale: 0.78 * k, ratio: 0.92 / 0.78 }),
+        makeLayer('cover', 'Cover', { x: 0.5, y: at(-0.17 * k), scale: 0.46 * k, shadow: 0.5 }),
         makeLayer('text', 'Title', {
-          bind: 'title', x: 0.5, y: 0.68, size: 0.054,
-          font: 'serif', align: 'center', tracking: 0, color: '#F3EFE9',
+          bind: 'title', x: 0.5, y: at(0.125 * k), size: 0.054, scale: k, maxWidth: 0.66,
+          font: 'serif', align: 'center', tracking: 0,
         }),
         makeLayer('text', 'Artist', {
-          bind: 'artist', x: 0.5, y: 0.727, size: 0.026,
-          font: 'sans', align: 'center', tracking: 0.16, uppercase: true, color: '#A8A097',
+          bind: 'artist', x: 0.5, y: at(0.17 * k), size: 0.026, scale: k, maxWidth: 0.66,
+          font: 'sans', align: 'center', tracking: 0.16, uppercase: true,
         }),
         makeLayer('progressBar', 'Progress', {
-          x: 0.5, y: 0.79, scale: 0.74, speed: 1, showTimes: true,
+          x: 0.5, y: at(0.235 * k), scale: 0.62 * k, speed: 1, showTimes: true,
         }),
-        makeLayer('controls', 'Controls', { x: 0.5, y: 0.90, scale: 0.30 }),
+        makeLayer('controls', 'Controls', { x: 0.5, y: at(0.355 * k), scale: 0.27 * k }),
       ];
     },
   },
@@ -226,10 +233,13 @@ export function createProject({ aspect, template = 'vinyl', song = null } = {}) 
     song: song || emptySong(),
     loopSeconds: 8,
     template,
+    // The shape the layers were laid out for. fitToSlide works from this.
+    layoutAspect: { w: TEMPLATES[template].fitsAnyShape ? chosen.w : 1080,
+      h: TEMPLATES[template].fitsAnyShape ? chosen.h : 1350 },
     showCover: true,
     grouped: true,          // the furniture moves as one arrangement
     palette: [],            // colours pulled from the cover or the photo
-    layers: TEMPLATES[template].build(),
+    layers: TEMPLATES[template].build(chosen),
   };
 }
 
@@ -239,7 +249,9 @@ export function createProject({ aspect, template = 'vinyl', song = null } = {}) 
  */
 export function applyTemplate(project, templateId) {
   project.template = templateId;
-  project.layers = TEMPLATES[templateId].build();
+  project.layers = TEMPLATES[templateId].build(project.aspect);
+  project.layoutAspect = TEMPLATES[templateId].fitsAnyShape
+    ? { w: project.aspect.w, h: project.aspect.h } : { w: 1080, h: 1350 };
   return project;
 }
 

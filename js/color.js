@@ -151,3 +151,61 @@ export function asRoomColour(hex, target = 0.09) {
   const floor = [20, 19, 18];
   return toHex(dimmed.map((v, i) => Math.max(v, floor[i])));
 }
+
+const parse = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+const mix = (a, b, amount) => a.map((v, i) => Math.round(v + (b[i] - v) * amount));
+
+/** How colourful a colour is, 0..1. Grey is 0. */
+function saturation([r, g, b]) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return max === 0 ? 0 : (max - min) / max;
+}
+
+/** `#rrggbb` plus an alpha, as an rgba() string a canvas takes. */
+export function withAlpha(hex, alpha) {
+  const [r, g, b] = parse(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+const tonesKept = new Map();
+
+/**
+ * The colours the player furniture is drawn in, taken from the cover, so the
+ * bar, the buttons and the words look like they belong to the record rather
+ * than sitting on top of it.
+ *
+ *   accent   the cover's most vivid colour, lifted until it shows on a dark
+ *            or blurred background: the filled bar and its knob
+ *   ink      near-white with a breath of that colour: titles, buttons
+ *   soft     the same, quieter: the artist line, the times
+ *   deep     the colour pulled most of the way to black: the card behind
+ */
+export function coverTones(palette) {
+  const key = palette.slice(0, 5).join();
+  if (tonesKept.has(key)) return tonesKept.get(key);
+
+  const colours = palette.slice(0, 5).map(parse);
+  // The most colourful of the cover's own colours, nudged toward the common
+  // ones: a tiny fleck of red should not beat a cover that is mostly blue.
+  const base = colours.length
+    ? colours.reduce((best, c, i) => {
+        const score = saturation(c) * (1 - i * 0.08);
+        return score > best.score ? { c, score } : best;
+      }, { c: colours[0], score: -1 }).c
+    : [150, 150, 150];
+
+  let accent = base;
+  for (let step = 0; luminance(accent) < 0.2 && step < 12; step++) {
+    accent = mix(accent, [255, 255, 255], 0.1);
+  }
+
+  const tones = {
+    accent: toHex(accent),
+    ink: toHex(mix(base, [255, 255, 255], 0.9)),
+    soft: toHex(mix(base, [255, 255, 255], 0.68)),
+    deep: toHex(mix(base, [0, 0, 0], 0.74)),
+  };
+  tonesKept.set(key, tones);
+  return tones;
+}

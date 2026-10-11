@@ -445,6 +445,12 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.10.0** - The Player sits on a pane of frosted glass: the photo behind it
+  blurred, tinted from the cover, with an edge that catches the light. The
+  bar, the buttons and the words take their colours from the cover. The
+  Player is laid out for the slide's own shape, so the card holds everything
+  on any shape, and long titles shrink to fit it. A Blur amount slider sits
+  under Background while the photo is blurred.
 - **0.9.0** - The interface rebuilt on Apple's design language: system type,
   inset grouped lists, a translucent navigation bar with large titles,
   segmented controls, switches, push and pop transitions, and light and dark

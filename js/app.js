@@ -181,7 +181,7 @@ async function startFromStyle(style) {
     state.project.aspect = aspect;
     state.project.palette = palette;
     // The style may have been made on a different shape of slide.
-    fitToSlide(state.project, style.project.aspect);
+    fitToSlide(state.project, style.project.layoutAspect || style.project.aspect);
     await saveNow();
     go('song');
   }, { once: true });

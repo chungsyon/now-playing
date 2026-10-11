@@ -25,6 +25,7 @@
 
 import { valueAt, turnsPerLoop, formatTime } from './model.js';
 import { EFFECTS, withDefaults } from './effects.js';
+import { coverTones, withAlpha } from './color.js';
 
 const ROOM = '#0E0D0C';
 
@@ -435,6 +436,7 @@ function drawLayer(ctx, layer, project, t, stage) {
     case 'text': return drawText(ctx, layer, project, t, stage);
     case 'progressBar': return drawProgressBar(ctx, layer, project, t, stage);
     case 'controls': return drawControls(ctx, layer, project, t, stage);
+    case 'card': return drawCard(ctx, layer, project, t, stage);
     default: return undefined;
   }
 }
@@ -642,6 +644,16 @@ function drawTracked(ctx, text, tracking, align, emSize) {
   });
 }
 
+// The colours the templates used to write in by hand. A layer that still has
+// one of them was never given a colour on purpose, so it takes the cover's.
+const OLD_DEFAULTS = { '#F3EFE9': 'ink', '#A8A097': 'soft' };
+
+function textColour(p, project) {
+  const tones = coverTones(project.palette);
+  if (!p.color) return p.bind === 'artist' ? tones.soft : tones.ink;
+  return OLD_DEFAULTS[p.color] ? tones[OLD_DEFAULTS[p.color]] : p.color;
+}
+
 function drawText(ctx, layer, project, t, stage) {
   const p = layer.props;
   let value = textFor(layer, project);
@@ -649,11 +661,22 @@ function drawText(ctx, layer, project, t, stage) {
   if (!value) return;
 
   placed(ctx, layer, t, stage, (c, scale) => {
-    const size = stage.width * valueAt(p.size, t) * scale;
+    let size = stage.width * valueAt(p.size, t) * scale;
     c.font = `${size}px ${FONTS[p.font] || FONTS.sans}`;
+    // A line with a limit shrinks to fit it, so a long title stays inside
+    // the card rather than running off its sides.
+    if (p.maxWidth) {
+      const room = stage.width * p.maxWidth * scale;
+      const chars = [...value];
+      const wide = c.measureText(value).width + (p.tracking || 0) * size * Math.max(0, chars.length - 1);
+      if (wide > room) {
+        size *= room / wide;
+        c.font = `${size}px ${FONTS[p.font] || FONTS.sans}`;
+      }
+    }
     c.textAlign = 'left';
     c.textBaseline = 'middle';
-    c.fillStyle = p.color || '#F3EFE9';
+    c.fillStyle = textColour(p, project);
     c.shadowColor = 'rgba(8, 5, 3, 0.55)';
     c.shadowBlur = size * 0.5;
     drawTracked(c, value, p.tracking || 0, p.align || 'center', size);
@@ -671,6 +694,7 @@ function positionAt(project, layer, t) {
 function drawProgressBar(ctx, layer, project, t, stage) {
   const p = layer.props;
   const trackSeconds = (project.song.durationMs || 0) / 1000;
+  const tones = coverTones(project.palette);
 
   placed(ctx, layer, t, stage, (c, scale) => {
     const width = stage.width * scale;
@@ -681,7 +705,7 @@ function drawProgressBar(ctx, layer, project, t, stage) {
     // The line itself is always fully there.
     c.lineCap = 'round';
     c.lineWidth = thickness;
-    c.strokeStyle = 'rgba(243,239,233,0.22)';
+    c.strokeStyle = withAlpha(tones.ink, 0.24);
     c.beginPath();
     c.moveTo(-half, 0);
     c.lineTo(half, 0);
@@ -706,7 +730,7 @@ function drawProgressBar(ctx, layer, project, t, stage) {
       const x = -half + width * fraction;
 
       c.globalAlpha = state.alpha;
-      c.strokeStyle = '#F2A65A';
+      c.strokeStyle = tones.accent;
       c.lineWidth = thickness;
       c.beginPath();
       c.moveTo(-half, 0);
@@ -715,13 +739,13 @@ function drawProgressBar(ctx, layer, project, t, stage) {
 
       c.beginPath();
       c.arc(x, 0, thickness * 1.9, 0, Math.PI * 2);
-      c.fillStyle = '#F2A65A';
+      c.fillStyle = tones.ink;
       c.fill();
 
       if (p.showTimes) {
         c.font = `${timeSize}px ${FONTS.mono}`;
         c.textBaseline = 'middle';
-        c.fillStyle = 'rgba(243,239,233,0.72)';
+        c.fillStyle = withAlpha(tones.soft, 0.85);
         c.textAlign = 'left';
         c.fillText(formatTime(state.at), -half, timeSize * 1.9);
         c.textAlign = 'right';
@@ -739,12 +763,13 @@ function drawProgressBar(ctx, layer, project, t, stage) {
 // --- transport icons (decorative) ------------------------------------------
 
 function drawControls(ctx, layer, project, t, stage) {
+  const ink = withAlpha(coverTones(project.palette).ink, 0.9);
   placed(ctx, layer, t, stage, (c, scale) => {
     const width = stage.width * scale;
     const unit = width * 0.13;
     const gap = width * 0.32;
-    c.fillStyle = 'rgba(243,239,233,0.82)';
-    c.strokeStyle = 'rgba(243,239,233,0.82)';
+    c.fillStyle = ink;
+    c.strokeStyle = ink;
     c.lineWidth = Math.max(1.5, unit * 0.12);
     c.lineJoin = 'round';
 
@@ -770,5 +795,106 @@ function drawControls(ctx, layer, project, t, stage) {
     // Next.
     triangle(gap + unit * 0.12, 1);
     c.fillRect(gap + unit * 0.72 - c.lineWidth, -unit * 0.58, c.lineWidth, unit * 1.16);
+  });
+}
+
+// --- card ------------------------------------------------------------------
+
+/**
+ * Frosted glass for the card: everything drawn so far, blurred. Under the
+ * card that is the photo, which holds still, so the blur is kept and only
+ * redone when the photo, its effects or the slide's size change.
+ *
+ * ponytail: the key only knows about the photo, which is right while the card
+ * sits straight above it, as the Player template puts it. A layer slipped in
+ * between would freeze into the glass until the photo next changed.
+ */
+function glassBehind(stage, project) {
+  const photo = project.layers.find(l => l.type === 'photo');
+  const key = JSON.stringify([
+    photo && [photo.visible, photo.props, photo.effects],
+    stage.width, stage.height, stage.mediaKey(),
+  ]);
+  if (stage.glassKey === key) return stage.glass;
+
+  const blurred = stage.blurred(stage.canvas, stage.width * 0.03);
+  // No canvas filter in this browser (Safari before 17): no glass, and the
+  // card falls back to a deeper tint instead.
+  if (blurred === stage.canvas) return null;
+  if (!stage.glass) {
+    stage.glass = document.createElement('canvas');
+    stage.glass.width = stage.width;
+    stage.glass.height = stage.height;
+  }
+  stage.glass.getContext('2d').drawImage(blurred, 0, 0);
+  stage.glassKey = key;
+  return stage.glass;
+}
+
+/**
+ * The panel the player sits on: a pane of frosted glass in the cover's
+ * darkest tone, with an edge that catches the light, brightest along the top
+ * like light falling on a sheet of glass from above.
+ */
+function drawCard(ctx, layer, project, t, stage) {
+  const p = layer.props;
+  const tones = coverTones(project.palette);
+  const glass = glassBehind(stage, project);
+
+  placed(ctx, layer, t, stage, (c, scale) => {
+    const w = stage.width * scale;
+    const h = w * (valueAt(p.ratio, t) || 1.2);
+    const r = w * 0.075;
+    const shape = () => {
+      c.beginPath();
+      c.roundRect(-w / 2, -h / 2, w, h, r);
+    };
+
+    // A soft shadow under the pane, drawn on its own so it never darkens the
+    // glass itself.
+    c.save();
+    c.shadowColor = 'rgba(0, 0, 0, 0.32)';
+    c.shadowBlur = w * 0.09;
+    c.shadowOffsetY = w * 0.025;
+    shape();
+    c.fillStyle = withAlpha(tones.deep, glass ? 0.3 : 0.6);
+    c.fill();
+    c.restore();
+
+    if (glass) {
+      c.save();
+      shape();
+      c.clip();
+      // The clip stays where it is on the slide; the blurred copy is drawn
+      // back exactly over the part of the slide it was made from.
+      const matrix = c.getTransform();
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.drawImage(glass, 0, 0);
+      c.setTransform(matrix);
+      shape();
+      c.fillStyle = withAlpha(tones.deep, 0.34);
+      c.fill();
+      c.restore();
+    }
+
+    // Light on the face of the glass, strongest at the top.
+    const sheen = c.createLinearGradient(0, -h / 2, 0, h / 2);
+    sheen.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
+    sheen.addColorStop(0.35, 'rgba(255, 255, 255, 0.03)');
+    sheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    shape();
+    c.fillStyle = sheen;
+    c.fill();
+
+    // The edge: white catching the light at the top, the cover's colour
+    // further down.
+    const edge = c.createLinearGradient(0, -h / 2, 0, h / 2);
+    edge.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
+    edge.addColorStop(0.3, withAlpha(tones.accent, 0.45));
+    edge.addColorStop(1, withAlpha(tones.accent, 0.18));
+    c.lineWidth = Math.max(1, stage.width * 0.0028);
+    c.strokeStyle = edge;
+    shape();
+    c.stroke();
   });
 }

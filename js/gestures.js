@@ -167,6 +167,10 @@ export function layerBounds(layer, project, stage) {
       w = stage.width * scale;
       h = stage.width * scale * 0.42;
       break;
+    case 'card':
+      w = stage.width * scale;
+      h = w * (valueAt(p.ratio, 0) || 1.2);
+      break;
     default:
       w = stage.width * scale;
       h = w;
@@ -181,7 +185,7 @@ export function layerBounds(layer, project, stage) {
  * so a layout made for an upright slide does not survive being stretched
  * onto a wide one: the words land on the sleeve and the sleeve runs off the
  * bottom. This lays the arrangement out on the slide it was made for
- * (`madeFor`, 4:5 unless told otherwise), shrinks it there as one piece until
+ * (`madeFor`, else the project's `layoutAspect`, else 4:5), shrinks it there as one piece until
  * it fits the real slide with a margin, and centres it. A slide it already
  * fits is left exactly as it is.
  */
@@ -207,7 +211,8 @@ export function fitToSlide(project, madeFor = null) {
   if (now.left >= 0 && now.top >= 0 && now.right <= W && now.bottom <= H) return project;
 
   // The slide the layout was drawn for, at the same width, so sizes match.
-  const ratio = madeFor ? madeFor.h / madeFor.w : 1350 / 1080;
+  const from = madeFor || project.layoutAspect;
+  const ratio = from ? from.h / from.w : 1350 / 1080;
   const source = { width: W, height: W * ratio };
   const box = edges(source);
   const margin = 0.06;
@@ -225,6 +230,7 @@ export function fitToSlide(project, madeFor = null) {
     p.y = (H / 2 + (y - midY) * k) / H;
     p.scale = valueAt(p.scale, 0) * k;
   }
+  project.layoutAspect = { w: W, h: H };
   return project;
 }
 
