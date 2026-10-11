@@ -959,40 +959,56 @@ function drawCard(ctx, layer, project, t, stage) {
     // A gloss: one soft diagonal streak across the upper corner, the
     // reflection of a light somewhere above and to the left.
     const gloss = c.createLinearGradient(-w / 2, -h / 2, w * 0.1, h * 0.15);
-    gloss.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
-    gloss.addColorStop(0.45, 'rgba(255, 255, 255, 0.07)');
-    gloss.addColorStop(0.5, 'rgba(255, 255, 255, 0)');
+    gloss.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
+    gloss.addColorStop(0.5, 'rgba(255, 255, 255, 0.04)');
+    gloss.addColorStop(1, 'rgba(255, 255, 255, 0)');
     c.fillStyle = gloss;
     c.fillRect(-w / 2, -h / 2, w, h);
 
     // The rim brightens all the way round, as glass does where you look
-    // through more of it. Stroked on the edge and clipped, so only the
-    // inside half shows.
-    c.lineWidth = Math.min(w, h) * 0.07;
-    c.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    // through more of it. Several faint strokes of growing width, so the
+    // glow fades out smoothly instead of ending in a second outline.
+    // Clipped, so only the inside half of each shows.
+    c.strokeStyle = 'rgba(255, 255, 255, 0.014)';
+    for (let i = 1; i <= 6; i++) {
+      c.lineWidth = Math.min(w, h) * 0.013 * i;
+      shape();
+      c.stroke();
+    }
+
+    // Specular highlights. Light from above and to the left catches the rim
+    // brightest near the top-left corner and fades away along both edges
+    // from there, rather than running as one even line across the top.
+    // Light leaving the glass gives a fainter glint at the opposite corner.
+    const reach = Math.hypot(w, h);
+    const glint = (x, y, alpha) => {
+      const g = c.createRadialGradient(x, y, 0, x, y, reach * 0.75);
+      g.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+      g.addColorStop(0.35, `rgba(255, 255, 255, ${alpha * 0.35})`);
+      g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      return g;
+    };
+    c.lineWidth = Math.max(2, w * 0.008);
+    c.strokeStyle = glint(-w * 0.3, -h / 2, 0.9);
     shape();
     c.stroke();
-
-    // Specular highlights: a sharp bright line along the top, and a fainter
-    // one along the bottom where light comes back out through the glass.
-    const spec = c.createLinearGradient(0, -h / 2, 0, h / 2);
-    spec.addColorStop(0, 'rgba(255, 255, 255, 0.95)');
-    spec.addColorStop(0.12, 'rgba(255, 255, 255, 0.25)');
-    spec.addColorStop(0.5, 'rgba(255, 255, 255, 0.04)');
-    spec.addColorStop(0.88, withAlpha(tones.accent, 0.25));
-    spec.addColorStop(1, 'rgba(255, 255, 255, 0.5)');
-    c.lineWidth = Math.max(2, w * 0.009);
-    c.strokeStyle = spec;
+    c.strokeStyle = glint(w * 0.35, h / 2, 0.35);
+    shape();
+    c.stroke();
+    // A breath of the cover's colour all the way round, so the pane belongs
+    // to the record on it.
+    c.lineWidth = Math.max(1.5, w * 0.004);
+    c.strokeStyle = withAlpha(tones.accent, 0.18);
     shape();
     c.stroke();
     c.restore();
 
-    // A thin dark line just outside, so the pane has an edge even on a
-    // light photo.
-    c.lineWidth = Math.max(1, w * 0.003);
-    c.strokeStyle = 'rgba(0, 0, 0, 0.22)';
-    roundedRect(c, -w / 2 - c.lineWidth, -h / 2 - c.lineWidth,
-      w + c.lineWidth * 2, h + c.lineWidth * 2, r + c.lineWidth);
+    // A faint dark line hugging the outside of the edge, so the pane still
+    // has one on a light photo. Same curve as the card, half outside it.
+    c.lineWidth = Math.max(1, w * 0.0025);
+    c.strokeStyle = 'rgba(0, 0, 0, 0.14)';
+    roundedRect(c, -w / 2 - c.lineWidth / 2, -h / 2 - c.lineWidth / 2,
+      w + c.lineWidth, h + c.lineWidth, r + c.lineWidth / 2);
     c.stroke();
   });
 }
