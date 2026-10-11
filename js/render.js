@@ -702,7 +702,7 @@ function drawProgressBar(ctx, layer, project, t, stage) {
     // Both go with the bar's own length, so the numbers shrink and grow with
     // it rather than staying one size while the bar is pinched smaller.
     const thickness = Math.max(2, width * 0.0075);
-    const timeSize = width * 0.028;
+    const timeSize = width * 0.036;
 
     // The line itself is always fully there.
     c.lineCap = 'round';
@@ -800,6 +800,21 @@ function drawControls(ctx, layer, project, t, stage) {
   });
 }
 
+/** roundRect arrived in Safari 16; older phones get the same shape by hand. */
+function roundedRect(c, x, y, w, h, r) {
+  c.beginPath();
+  if (c.roundRect) {
+    c.roundRect(x, y, w, h, r);
+    return;
+  }
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
+  c.closePath();
+}
+
 // --- card ------------------------------------------------------------------
 
 /**
@@ -847,17 +862,14 @@ function drawCard(ctx, layer, project, t, stage) {
     const w = stage.width * scale;
     const h = w * (valueAt(p.ratio, t) || 1.2);
     const r = w * 0.075;
-    const shape = () => {
-      c.beginPath();
-      c.roundRect(-w / 2, -h / 2, w, h, r);
-    };
+    const shape = () => roundedRect(c, -w / 2, -h / 2, w, h, r);
 
     // A soft shadow under the pane, drawn on its own so it never darkens the
     // glass itself.
     c.save();
-    c.shadowColor = 'rgba(0, 0, 0, 0.32)';
-    c.shadowBlur = w * 0.09;
-    c.shadowOffsetY = w * 0.025;
+    c.shadowColor = 'rgba(0, 0, 0, 0.4)';
+    c.shadowBlur = w * 0.1;
+    c.shadowOffsetY = w * 0.03;
     shape();
     c.fillStyle = withAlpha(tones.deep, glass ? 0.3 : 0.6);
     c.fill();
@@ -874,15 +886,21 @@ function drawCard(ctx, layer, project, t, stage) {
       c.drawImage(glass, 0, 0);
       c.setTransform(matrix);
       shape();
-      c.fillStyle = withAlpha(tones.deep, 0.34);
+      c.fillStyle = withAlpha(tones.deep, 0.22);
       c.fill();
       c.restore();
     }
 
+    // Frost: the pane is lighter than what is behind it, which is what makes
+    // it read as glass on a dark photo instead of vanishing into it.
+    shape();
+    c.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    c.fill();
+
     // Light on the face of the glass, strongest at the top.
     const sheen = c.createLinearGradient(0, -h / 2, 0, h / 2);
-    sheen.addColorStop(0, 'rgba(255, 255, 255, 0.12)');
-    sheen.addColorStop(0.35, 'rgba(255, 255, 255, 0.03)');
+    sheen.addColorStop(0, 'rgba(255, 255, 255, 0.16)');
+    sheen.addColorStop(0.35, 'rgba(255, 255, 255, 0.04)');
     sheen.addColorStop(1, 'rgba(255, 255, 255, 0)');
     shape();
     c.fillStyle = sheen;
@@ -891,10 +909,10 @@ function drawCard(ctx, layer, project, t, stage) {
     // The edge: white catching the light at the top, the cover's colour
     // further down.
     const edge = c.createLinearGradient(0, -h / 2, 0, h / 2);
-    edge.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
-    edge.addColorStop(0.3, withAlpha(tones.accent, 0.45));
-    edge.addColorStop(1, withAlpha(tones.accent, 0.18));
-    c.lineWidth = Math.max(1, stage.width * 0.0028);
+    edge.addColorStop(0, 'rgba(255, 255, 255, 0.85)');
+    edge.addColorStop(0.3, withAlpha(tones.accent, 0.7));
+    edge.addColorStop(1, withAlpha(tones.accent, 0.4));
+    c.lineWidth = Math.max(1.5, w * 0.006);
     c.strokeStyle = edge;
     shape();
     c.stroke();
