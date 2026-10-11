@@ -1,6 +1,6 @@
 /** Run with: node js/gestures.test.mjs */
 import assert from 'node:assert/strict';
-import { pullTo, pullAngle, placeMembers, handleAt, layerBounds } from './gestures.js';
+import { pullTo, pullAngle, placeMembers, handleAt, layerBounds, fitToSlide } from './gestures.js';
 import { createProject, movesWith } from './model.js';
 
 const near = (a, b, slack = 1e-9) => assert.ok(Math.abs(a - b) <= slack, `${a} != ${b}`);
@@ -115,5 +115,24 @@ near(members[0].layer.props.scale, members[0].scale * 0.5);
 // Grouping off leaves one layer on its own.
 project.grouped = false;
 assert.equal(movesWith(project, cover).length, 1);
+
+
+// --- fitting a template to a landscape slide --------------------------------
+for (const template of ['vinyl', 'player']) {
+  const wide = fitToSlide(createProject({ aspect: { id: 'photo', w: 1080, h: 600 }, template }));
+  const slide = { width: 1080, height: 600 };
+  for (const layer of wide.layers.filter(l => l.type !== 'photo')) {
+    const b = layerBounds(layer, wide, slide);
+    assert.ok(b.cy - b.h / 2 >= 0 && b.cy + b.h / 2 <= 600, `${template} ${layer.name} spills`);
+    assert.ok(b.cx - b.w / 2 >= 0 && b.cx + b.w / 2 <= 1080, `${template} ${layer.name} spills sideways`);
+  }
+  // The words stay clear of the sleeve, the way the template drew them.
+  const sleeve = layerBounds(wide.layers.find(l => l.type === 'cover'), wide, slide);
+  const title = layerBounds(wide.layers.find(l => l.name === 'Title'), wide, slide);
+  assert.ok(title.cy > sleeve.cy + sleeve.h / 2, `${template} title sits on the sleeve`);
+  // An upright slide already fits, so it is left exactly as the template made it.
+  const tall = createProject({ template });
+  assert.deepEqual(fitToSlide(structuredClone(tall)).layers, tall.layers);
+}
 
 console.log('gestures: ok');

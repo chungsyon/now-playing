@@ -24,6 +24,10 @@ export async function enter(root, app) {
 
   // Slide 1: the photo, exactly as it is. This app never re-saves it.
   const photoThumb = h('img', { alt: 'Your photo, which stays untouched' });
+  // Shown at the slide's shape, cropped to fill, so the two cards line up
+  // the way Instagram will show them side by side.
+  photoThumb.style.aspectRatio = `${w} / ${height}`;
+  photoThumb.style.objectFit = 'cover';
   if (app.state.blobs.photo) {
     const url = URL.createObjectURL(app.state.blobs.photo);
     photoThumb.src = url;

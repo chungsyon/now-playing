@@ -10,6 +10,7 @@ import { h, clear, icon, toast, decodeImage } from './ui.js';
 import { ASPECTS, createProject, newId, applyTemplate } from './model.js';
 import { extractPalette, dedupeHex } from './color.js';
 import { putDraft, getDraft, debounce } from './db.js';
+import { fitToSlide } from './gestures.js';
 
 import * as home from './screens/home.js';
 import * as song from './screens/song.js';
@@ -149,7 +150,7 @@ async function startWithPhoto(file) {
     state.selectedLayerId = null;
     state.previewTime = 0;
 
-    state.project = createProject({ aspect: aspectFor(image) });
+    state.project = fitToSlide(createProject({ aspect: aspectFor(image) }));
     state.photoPalette = extractPalette(image, 5);
     state.project.palette = state.photoPalette.slice();
 
@@ -179,6 +180,8 @@ async function startFromStyle(style) {
     state.project.song = kept;
     state.project.aspect = aspect;
     state.project.palette = palette;
+    // The style may have been made on a different shape of slide.
+    fitToSlide(state.project, style.project.aspect);
     await saveNow();
     go('song');
   }, { once: true });

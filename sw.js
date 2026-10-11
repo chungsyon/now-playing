@@ -11,7 +11,7 @@
  * straight away.)
  */
 
-const VERSION = 12;
+const VERSION = 13;
 const CACHE = `now-playing-v${VERSION}`;
 
 const SHELL = [
@@ -52,8 +52,13 @@ const SHELL = [
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE)
-      // One file failing should not stop the rest being cached.
-      .then(cache => Promise.allSettled(SHELL.map(path => cache.add(path))))
+      // One file failing should not stop the rest being cached. `reload`
+      // skips the browser's own HTTP cache: without it, a file fetched a few
+      // minutes earlier could be stored next to newer ones that import from
+      // it, and a missing export leaves the app blank.
+      .then(cache => Promise.allSettled(
+        SHELL.map(path => cache.add(new Request(path, { cache: 'reload' }))),
+      ))
       .then(() => self.skipWaiting()),
   );
 });

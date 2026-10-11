@@ -17,7 +17,7 @@ import {
 import { EFFECTS, makeEffect } from '../effects.js';
 import { Stage, render } from '../render.js';
 import { FPS, bitrateFor } from '../export.js';
-import { attachGestures, layerBounds, handleRadius } from '../gestures.js';
+import { attachGestures, layerBounds, handleRadius, fitToSlide } from '../gestures.js';
 import { putStyle } from '../db.js';
 import { asRoomColour, dedupeHex } from '../color.js';
 
@@ -189,8 +189,13 @@ function buildStage(app, preview) {
   // here rather than in CSS means the whole slide is always visible: nothing
   // ever disappears behind the sheet.
   const ratio = project.aspect.h / project.aspect.w;
-  const roomWidth = Math.min(previewCap(), area.clientWidth || 340);
-  const roomHeight = Math.max(160, area.clientHeight || 360);
+  // clientWidth and clientHeight include the padding round the slide, which
+  // is room the slide must not take.
+  const pad = getComputedStyle(area);
+  const padX = parseFloat(pad.paddingLeft) + parseFloat(pad.paddingRight);
+  const padY = parseFloat(pad.paddingTop) + parseFloat(pad.paddingBottom);
+  const roomWidth = Math.min(previewCap(), (area.clientWidth || 340) - padX);
+  const roomHeight = Math.max(160, (area.clientHeight || 360) - padY);
   const cssWidth = Math.floor(Math.min(roomWidth, roomHeight / ratio));
   const cssHeight = Math.round(cssWidth * ratio);
 
@@ -818,7 +823,7 @@ export function templateSwitcher(app) {
     Object.values(TEMPLATES).map(t => ({ value: t.id, label: t.label })),
     app.state.project.template,
     value => {
-      applyTemplate(app.state.project, value);
+      fitToSlide(applyTemplate(app.state.project, value));
       app.state.selectedLayerId = null;
       switcher.select(value);
       app.save();

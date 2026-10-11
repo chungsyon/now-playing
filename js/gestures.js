@@ -174,6 +174,60 @@ export function layerBounds(layer, project, stage) {
   return { cx, cy, w, h, rotation };
 }
 
+/**
+ * Fit the furniture, as one piece, inside the slide.
+ *
+ * Positions are fractions of each side but sizes are fractions of the width,
+ * so a layout made for an upright slide does not survive being stretched
+ * onto a wide one: the words land on the sleeve and the sleeve runs off the
+ * bottom. This lays the arrangement out on the slide it was made for
+ * (`madeFor`, 4:5 unless told otherwise), shrinks it there as one piece until
+ * it fits the real slide with a margin, and centres it. A slide it already
+ * fits is left exactly as it is.
+ */
+export function fitToSlide(project, madeFor = null) {
+  const W = project.aspect.w;
+  const H = project.aspect.h;
+  const layers = project.layers.filter(l => l.type !== 'photo');
+  if (!layers.length) return project;
+
+  const edges = stage => {
+    const box = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity };
+    for (const layer of layers) {
+      const b = layerBounds(layer, project, stage);
+      box.left = Math.min(box.left, b.cx - b.w / 2);
+      box.right = Math.max(box.right, b.cx + b.w / 2);
+      box.top = Math.min(box.top, b.cy - b.h / 2);
+      box.bottom = Math.max(box.bottom, b.cy + b.h / 2);
+    }
+    return box;
+  };
+
+  const now = edges({ width: W, height: H });
+  if (now.left >= 0 && now.top >= 0 && now.right <= W && now.bottom <= H) return project;
+
+  // The slide the layout was drawn for, at the same width, so sizes match.
+  const ratio = madeFor ? madeFor.h / madeFor.w : 1350 / 1080;
+  const source = { width: W, height: W * ratio };
+  const box = edges(source);
+  const margin = 0.06;
+  const k = Math.min(1,
+    (W * (1 - margin * 2)) / (box.right - box.left),
+    (H * (1 - margin * 2)) / (box.bottom - box.top));
+  const midX = (box.left + box.right) / 2;
+  const midY = (box.top + box.bottom) / 2;
+
+  for (const layer of layers) {
+    const p = layer.props;
+    const x = valueAt(p.x, 0) * source.width;
+    const y = valueAt(p.y, 0) * source.height;
+    p.x = (W / 2 + (x - midX) * k) / W;
+    p.y = (H / 2 + (y - midY) * k) / H;
+    p.scale = valueAt(p.scale, 0) * k;
+  }
+  return project;
+}
+
 function inside(bounds, x, y) {
   const angle = (-bounds.rotation * Math.PI) / 180;
   const dx = x - bounds.cx;
