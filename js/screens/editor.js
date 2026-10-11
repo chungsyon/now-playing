@@ -6,7 +6,10 @@
  * render function, so what you line up here is what comes out.
  */
 
-import { h, clear, icon, iconButton, sliderRow, segmented, toast, bottle, loopTimer } from '../ui.js';
+import {
+  h, clear, icon, iconButton, sliderRow, segmented, toast, loopTimer,
+  sectionHead, section, footnote, switchRow, emptyState,
+} from '../ui.js';
 import {
   TEMPLATES, applyTemplate, valueAt, findLayer, formatTime,
   actualRpm, LOOP_MIN, LOOP_MAX, LAYER_LABELS, toStyle, movesWith,
@@ -53,42 +56,35 @@ export async function enter(root, app) {
   overlay = h('canvas', { class: 'stagewrap__overlay' });
   overlayCtx = overlay.getContext('2d');
 
-  const stagewrap = h('div', { class: 'stagewrap develops' }, preview, overlay);
+  const stagewrap = h('div', { class: 'stagewrap' }, preview, overlay);
   const stageArea = h('div', { class: 'editor-stage' }, stagewrap);
 
   timer = loopTimer();
-  const sizeRead = h('span', { class: 'timer__read' },
-    `${app.state.project.aspect.w} x ${app.state.project.aspect.h}`);
+  const sizeRead = h('span', { class: 'transport__size' },
+    `${app.state.project.aspect.w}×${app.state.project.aspect.h}`);
 
   const playButton = iconButton('play', 'Play the loop', () => togglePlay(playButton));
 
   sheetBody = h('div', { class: 'sheet__body' });
-  const tabs = h('div', { class: 'sheet__tabs', role: 'tablist' });
-  for (const [id, label] of [
-    ['layers', 'Layers'], ['effects', 'Effects'], ['animation', 'Animation'], ['song', 'Song'],
-  ]) {
-    tabs.append(h('button', {
-      class: 'sheet__tab',
-      type: 'button',
-      role: 'tab',
-      'aria-selected': String(activeTab === id),
-      onclick: () => {
-        activeTab = id;
-        for (const tab of tabs.children) {
-          tab.setAttribute('aria-selected', String(tab.textContent === label));
-        }
-        buildSheet(app);
-      },
-    }, label));
-  }
+  const tabSwitch = segmented([
+    { value: 'layers', label: 'Layers' },
+    { value: 'effects', label: 'Effects' },
+    { value: 'animation', label: 'Motion' },
+    { value: 'song', label: 'Song' },
+  ], activeTab, value => {
+    activeTab = value;
+    tabSwitch.select(value);
+    buildSheet(app);
+    sheetBody.scrollTop = 0;
+  }, 'Controls');
+  const tabs = h('div', { class: 'sheet__tabs' }, tabSwitch);
 
   root.classList.add('screen--editor');
   root.append(
     stageArea,
-    h('div', { class: 'loopbar' },
+    h('div', { class: 'transport' },
       playButton,
       timer.node,
-      h('div', { class: 'grow' }),
       sizeRead,
     ),
     h('div', { class: 'sheet' }, tabs, sheetBody),
@@ -314,14 +310,16 @@ function drawSelection(app) {
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate((rotation * Math.PI) / 180);
-  ctx.strokeStyle = '#F2A65A';
-  ctx.lineWidth = Math.max(1.5, stage.width * 0.004);
-  ctx.setLineDash([stage.width * 0.018, stage.width * 0.014]);
+  // White with a soft shadow, the way Photos draws a crop box: it reads on
+  // a light photo and a dark one alike.
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.45)';
+  ctx.shadowBlur = Math.max(2, stage.width * 0.006);
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = Math.max(1.5, stage.width * 0.003);
   ctx.strokeRect(-w / 2, -h / 2, w, h);
 
-  ctx.setLineDash([]);
   const handle = handleRadius(stage);
-  ctx.fillStyle = '#F2A65A';
+  ctx.fillStyle = '#FFFFFF';
   for (const [hx, hy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     ctx.beginPath();
     ctx.arc((hx * w) / 2, (hy * h) / 2, handle, 0, Math.PI * 2);
@@ -355,8 +353,9 @@ function drawGroupBox(app, layer) {
 
   const ctx = overlayCtx;
   ctx.save();
-  ctx.strokeStyle = 'rgba(242, 166, 90, 0.34)';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
   ctx.lineWidth = Math.max(1, stage.width * 0.002);
+  ctx.setLineDash([stage.width * 0.012, stage.width * 0.01]);
   ctx.strokeRect(left, top, right - left, bottom - top);
   ctx.restore();
 }
@@ -370,7 +369,8 @@ function drawGuides(app) {
   const ctx = overlayCtx;
   const layer = findLayer(app.state.project, app.state.selectedLayerId);
   ctx.save();
-  ctx.strokeStyle = '#F2A65A';
+  // Alignment guides in yellow, like Keynote's.
+  ctx.strokeStyle = '#FFD60A';
   ctx.lineWidth = Math.max(1, stage.width * 0.003);
 
   if (on.x) {
@@ -390,8 +390,8 @@ function drawGuides(app) {
   if (on.rotation) {
     // The angle it landed on, written beside the layer.
     const size = Math.max(11, stage.width * 0.035);
-    ctx.font = `${size}px ${'"DM Sans", system-ui, sans-serif'}`;
-    ctx.fillStyle = '#F2A65A';
+    ctx.font = `600 ${size}px system-ui, -apple-system, sans-serif`;
+    ctx.fillStyle = '#FFD60A';
     ctx.textAlign = 'center';
     ctx.fillText(
       `${Math.round(valueAt(layer.props.rotation, 0))}\u00B0`,
@@ -437,14 +437,14 @@ function layersTab(box, app) {
         type: 'button',
         'aria-pressed': String(photo.props.solidColor === dimmed),
         'aria-label': `Background colour ${dimmed}`,
-        style: { background: dimmed, minWidth: '46px' },
+        style: { background: dimmed },
         onclick: () => {
           photo.props.solidColor = dimmed;
           paintSwatches();
           app.save();
           drawOnce(app);
         },
-      }, ' ');
+      });
       swatches.append(button);
     }
   };
@@ -468,65 +468,43 @@ function layersTab(box, app) {
     drawOnce(app);
   }, 'Background');
 
-  box.append(
-    bottle('Background'),
-    background,
-    swatches,
-    h('div', { style: { height: '14px' } }),
-  );
+  const groupNote = footnote('');
+  const toggle = (label, checked, onChange) => switchRow(label, checked, on => {
+    onChange(on);
+    app.save();
+    drawOnce(app);
+  });
 
-  // Cover on or off
   box.append(
-    h('button', {
-      class: 'btn btn--block',
-      type: 'button',
-      onclick: () => {
-        project.showCover = !project.showCover;
-        app.save();
-        buildSheet(app);
-        drawOnce(app);
-      },
-    },
-      icon(project.showCover ? 'eye' : 'eye-slash', { size: 'sm' }),
-      project.showCover ? 'Cover is showing' : 'Cover is hidden, colours only',
+    section('Background', h('div', { class: 'section', style: { gap: '10px' } }, background, swatches)),
+
+    section('Arrange',
+      h('div', { class: 'group' },
+        toggle('Show cover', project.showCover, on => { project.showCover = on; }),
+        toggle('Move together', project.grouped !== false, on => {
+          project.grouped = on;
+          groupNote.textContent = groupText();
+        }),
+      ),
+      groupNote,
     ),
-    h('div', { style: { height: '8px' } }),
-    h('button', {
-      class: 'btn btn--block',
-      type: 'button',
-      onclick: () => {
-        project.grouped = project.grouped === false;
-        app.save();
-        buildSheet(app);
-        drawOnce(app);
-      },
-    },
-      icon(project.grouped === false ? 'frame-corners' : 'stack-simple', { size: 'sm' }),
-      project.grouped === false
-        ? 'Each layer moves on its own'
-        : 'Cover, words and bar move as one',
-    ),
-    h('p', { class: 'body body--tight' },
-      project.grouped === false
-        ? 'Drag any layer and only that layer moves.'
-        : 'Drag any of them and the whole arrangement follows, keeping its '
-          + 'spacing. Lock one to leave it behind.'),
+  );
+  // Written into rather than rebuilt, so the switch keeps sliding.
+  const groupText = () => (project.grouped === false
+    ? 'Drag any layer and only that layer moves.'
+    : 'Cover, words and bar move as one, keeping their spacing. Lock one to leave it behind.')
     // Said only where it applies. A finger pinches and twists and needs no
     // telling; a mouse has to be shown the corners.
-    window.matchMedia('(pointer: fine)').matches
-      ? h('p', { class: 'body body--tight', style: { marginTop: '8px' } },
-        'Drag a corner dot to resize, just outside one to turn. '
-        + 'Arrow keys nudge, Shift for bigger steps.')
-      : null,
-    h('div', { style: { height: '18px' } }),
-    bottle('Layers', `${String(project.layers.length).padStart(2, '0')} total`),
-  );
+    + (window.matchMedia('(pointer: fine)').matches
+      ? ' Drag a corner to resize, just outside one to turn. Arrow keys nudge, Shift for bigger steps.'
+      : '');
+  groupNote.textContent = groupText();
 
   // The list, topmost first, which is how it looks on the slide.
-  const rows = h('div', { class: 'items' });
+  const rows = h('div', { class: 'group' });
   for (const layer of [...project.layers].reverse()) {
     const select = h('button', {
-      class: 'item' + (layer.id === app.state.selectedLayerId ? ' is-selected' : ''),
+      class: 'row' + (layer.id === app.state.selectedLayerId ? ' is-selected' : ''),
       type: 'button',
       onclick: () => {
         app.state.selectedLayerId = layer.locked ? null : layer.id;
@@ -534,12 +512,12 @@ function layersTab(box, app) {
         drawOnce(app);
       },
     },
-      h('span', { class: 'item__main' },
-        h('span', { class: 'item__title' }, layer.name),
-        h('span', { class: 'item__sub' },
+      h('span', { class: 'row__main', style: { opacity: layer.visible ? '1' : '0.45' } },
+        h('span', { class: 'row__title' }, layer.name),
+        h('span', { class: 'row__sub' },
           [LAYER_LABELS[layer.type], layer.effects.length
             ? `${layer.effects.length} effect${layer.effects.length > 1 ? 's' : ''}` : null]
-            .filter(Boolean).join('  /  ')),
+            .filter(Boolean).join(' · ')),
       ),
     );
 
@@ -565,25 +543,20 @@ function layersTab(box, app) {
       },
     );
 
-    rows.append(h('div', { class: 'item-row' },
-      h('div', { class: 'grow', style: { minWidth: '0' } }, select),
-      visibility,
-      lock,
-    ));
+    rows.append(h('div', { class: 'row-wrap' }, select, visibility, lock));
   }
-  box.append(rows);
 
   box.append(
-    h('div', { style: { height: '18px' } }),
+    section(sectionHead('Layers', String(project.layers.length)), rows),
     h('button', {
-      class: 'btn btn--bare btn--block',
+      class: 'btn btn--block',
       type: 'button',
       onclick: async () => {
         const name = `${TEMPLATES[project.template].label} ${new Date().toLocaleDateString()}`;
         await putStyle(toStyle(project, name));
         toast('Look saved to your styles.');
       },
-    }, icon('swatches', { size: 'sm' }), 'Save this look as a style'),
+    }, icon('swatches', { size: 'sm' }), 'Save Look as Style'),
   );
 }
 
@@ -594,21 +567,18 @@ function effectsTab(box, app) {
   const layer = findLayer(project, app.state.selectedLayerId)
     || project.layers.find(l => l.type === 'photo');
 
-  box.append(
-    bottle('Effects', layer.name),
-    h('p', { class: 'body body--tight' }, 'Applied from the top down.'),
-    h('div', { style: { height: '10px' } }),
-  );
+  box.append(footnote(`Effects on ${layer.name}, applied from the top down.`));
+  box.lastChild.style.padding = '0 4px';
 
   if (layer.effects.length === 0) {
-    box.append(h('p', { class: 'empty' }, 'No effects on this layer yet.'));
+    box.append(emptyState('No effects on this layer yet.'));
   }
 
   layer.effects.forEach((effect, index) => {
     const spec = EFFECTS[effect.type];
     if (!spec) return;
 
-    const controls = h('div', { class: 'stack' });
+    const controls = h('div', { class: 'group--pad', style: { display: 'flex', flexDirection: 'column', gap: '10px', paddingTop: '0' } });
     for (const [key, def] of Object.entries(spec.params)) {
       const current = effect.params[key] ?? def.default;
       controls.append(sliderRow({
@@ -636,11 +606,12 @@ function effectsTab(box, app) {
       drawOnce(app);
     };
 
-    box.append(h('div', { class: 'effect' },
+    box.append(h('div', { class: 'group' },
       h('div', { class: 'effect__head' },
         h('span', { class: 'effect__name' }, spec.label),
-        iconButton('caret-up', `Move ${spec.label} earlier`, () => move(-1)),
-        iconButton('caret-down', `Move ${spec.label} later`, () => move(1)),
+        index > 0 ? iconButton('caret-up', `Move ${spec.label} earlier`, () => move(-1)) : null,
+        index < layer.effects.length - 1
+          ? iconButton('caret-down', `Move ${spec.label} later`, () => move(1)) : null,
         iconButton('x', `Remove ${spec.label}`, () => {
           layer.effects.splice(index, 1);
           app.save();
@@ -652,9 +623,10 @@ function effectsTab(box, app) {
     ));
   });
 
-  const adders = h('div', { class: 'choices' });
+  const adders = h('div', { class: 'chips' });
   for (const [type, spec] of Object.entries(EFFECTS)) {
     adders.append(h('button', {
+      class: 'chip',
       type: 'button',
       onclick: () => {
         layer.effects.push(makeEffect(type));
@@ -662,9 +634,9 @@ function effectsTab(box, app) {
         buildSheet(app);
         drawOnce(app);
       },
-    }, spec.label));
+    }, icon('plus', { size: 'sm' }), spec.label));
   }
-  box.append(bottle('Add'), adders);
+  box.append(section('Add effect', adders));
 }
 
 // --- Animation -------------------------------------------------------------
@@ -676,7 +648,7 @@ function animationTab(box, app) {
 
   // Filled in below when there is a record; the loop slider calls it either way.
   let refreshDisc = () => {};
-  const readout = h('p', { class: 'body body--tight' });
+  const readout = footnote('');
   const showTurns = () => {
     if (!disc) return;
     const real = actualRpm(disc.props.rpm, project.loopSeconds);
@@ -689,44 +661,42 @@ function animationTab(box, app) {
   // The readout and the note are written into, never rebuilt. Rebuilding the
   // sheet from inside onInput throws away the slider the thumb is holding, so
   // the drag stopped dead after one step.
-  const loopLabel = bottle('Loop', `${project.loopSeconds.toFixed(1)}s`);
-  const loopValue = loopLabel.querySelector('.bottle__value');
-  const loopNote = h('p', { class: 'body body--tight' });
+  const loopNote = footnote('');
   const showLoop = () => {
     const seconds = project.loopSeconds;
-    loopValue.textContent = `${seconds.toFixed(1)}s`;
     const rate = (bitrateFor(seconds) / 1e6).toFixed(1);
     const megabytes = Math.round((bitrateFor(seconds) * seconds) / 8 / 1e6);
     loopNote.textContent = seconds > 60
-      ? `${Math.round(seconds * FPS)} frames at ${rate} Mbps, about ${megabytes}MB. `
+      ? `${Math.round(seconds * FPS)} frames at ${rate} Mbps, about ${megabytes} MB. `
         + 'Longer than a minute is a Reel, not a carousel slide.'
       : `${Math.round(seconds * FPS)} frames at ${FPS} a second, `
-        + `${rate} Mbps, about ${megabytes}MB.`;
+        + `${rate} Mbps, about ${megabytes} MB.`;
   };
   showLoop();
 
   box.append(
-    loopLabel,
-    sliderRow({
-      label: 'Length',
-      min: LOOP_MIN, max: LOOP_MAX, step: 1,
-      value: project.loopSeconds,
-      format: value => `${value}s`,
-      onInput: value => {
-        project.loopSeconds = value;
-        showLoop();
-        refreshDisc();
-        app.save();
-        drawOnce(app);
-      },
-    }),
-    loopNote,
+    section('Loop',
+      h('div', { class: 'group group--pad' },
+        sliderRow({
+          label: 'Length',
+          min: LOOP_MIN, max: LOOP_MAX, step: 1,
+          value: project.loopSeconds,
+          format: value => `${value} s`,
+          onInput: value => {
+            project.loopSeconds = value;
+            showLoop();
+            refreshDisc();
+            app.save();
+            drawOnce(app);
+          },
+        }),
+      ),
+      loopNote,
+    ),
   );
 
   if (disc) {
-    const discLabel = bottle('Record',
-      `${Math.round(actualRpm(disc.props.rpm, project.loopSeconds))} rpm`);
-    const discValue = discLabel.querySelector('.bottle__value');
+    const discValue = h('span', { class: 'section__value' });
     const showDisc = () => {
       showTurns();
       discValue.textContent =
@@ -735,51 +705,56 @@ function animationTab(box, app) {
     showDisc();
     refreshDisc = showDisc;
 
+    const direction = segmented([
+      { value: 1, label: 'Clockwise' },
+      { value: -1, label: 'Anticlockwise' },
+    ], disc.props.direction, value => {
+      disc.props.direction = value;
+      direction.select(value);
+      app.save();
+      drawOnce(app);
+    }, 'Direction');
+
     box.append(
-      h('div', { style: { height: '18px' } }),
-      discLabel,
-      sliderRow({
-        label: 'Speed',
-        min: 8, max: 90, step: 1,
-        value: disc.props.rpm,
-        format: value => `${value} rpm`,
-        onInput: value => {
-          disc.props.rpm = value;
-          showDisc();
-          app.save();
-          drawOnce(app);
-        },
-      }),
-      readout,
-      segmented([
-        { value: 1, label: 'Clockwise' },
-        { value: -1, label: 'Anticlockwise' },
-      ], disc.props.direction, value => {
-        disc.props.direction = value;
-        app.save();
-        buildSheet(app);
-        drawOnce(app);
-      }, 'Direction'),
+      section(h('p', { class: 'section__head' }, h('span', {}, 'Record'), discValue),
+        h('div', { class: 'group group--pad' },
+          sliderRow({
+            label: 'Speed',
+            min: 8, max: 90, step: 1,
+            value: disc.props.rpm,
+            format: value => `${value} rpm`,
+            onInput: value => {
+              disc.props.rpm = value;
+              showDisc();
+              app.save();
+              drawOnce(app);
+            },
+          }),
+          direction,
+        ),
+        readout,
+      ),
     );
   }
 
   if (bar) {
+    const speed = segmented([
+      { value: 1, label: 'Real time' },
+      { value: 4, label: '4×' },
+      { value: 12, label: '12×' },
+    ], bar.props.speed, value => {
+      bar.props.speed = value;
+      speed.select(value);
+      app.save();
+      drawOnce(app);
+    }, 'Progress speed');
+
     box.append(
-      h('div', { style: { height: '18px' } }),
-      bottle('Progress bar'),
-      segmented([
-        { value: 1, label: 'Real time' },
-        { value: 4, label: '4 times' },
-        { value: 12, label: '12 times' },
-      ], bar.props.speed, value => {
-        bar.props.speed = value;
-        app.save();
-        buildSheet(app);
-        drawOnce(app);
-      }, 'Progress speed'),
-      h('p', { class: 'body body--tight' },
-        'Real time matches the song. Faster makes the movement easy to see in a ' +
-        'short loop.'),
+      section('Progress bar',
+        speed,
+        footnote('Real time matches the song. Faster makes the movement easy to see in a ' +
+          'short loop.'),
+      ),
     );
   }
 }
@@ -790,41 +765,48 @@ function songTab(box, app) {
   const project = app.state.project;
   const song = project.song;
   const total = Math.max(1, Math.round((song.durationMs || 0) / 1000));
+  const cover = app.state.media.cover;
 
-  box.append(
-    bottle('Song', song.durationMs ? formatTime(song.durationMs / 1000) : null),
-    h('div', { class: 'item', style: { cursor: 'default', borderTop: 'none' } },
-      h('span', { class: 'item__main' },
-        h('span', { class: 'item__title' }, song.title || 'No song yet'),
-        h('span', { class: 'item__sub' },
-          [song.artist, song.album, song.year].filter(Boolean).join('  /  ') || 'Pick one to begin'),
-      ),
-      song.version ? h('span', { class: 'tag' }, song.version) : null,
-    ),
-  );
+  const art = h('canvas', { class: 'art', width: 96, height: 96 });
+  if (cover) art.getContext('2d').drawImage(cover, 0, 0, 96, 96);
 
-  if (song.title) {
-    box.append(sliderRow({
-      label: 'Clip starts at',
-      min: 0, max: Math.max(1, total - 1), step: 1,
-      value: Math.min(song.clipStartSeconds, total - 1),
-      format: value => `${formatTime(value)} of ${formatTime(total)}`,
-      onInput: value => {
-        song.clipStartSeconds = value;
-        app.save();
-        drawOnce(app);
-      },
-    }));
-  }
-
-  box.append(
-    h('div', { style: { height: '14px' } }),
+  const card = h('div', { class: 'group' },
     h('button', {
-      class: 'btn btn--bare btn--block',
+      class: 'row',
       type: 'button',
       onclick: () => app.go('song'),
-    }, icon('magnifying-glass', { size: 'sm' }), song.title ? 'Change the song' : 'Find the song'),
+    },
+      art,
+      h('span', { class: 'row__main' },
+        h('span', { class: 'row__title' }, song.title || 'No song yet'),
+        h('span', { class: 'row__sub' },
+          [song.artist, song.album, song.year].filter(Boolean).join(' · ') || 'Choose one to begin'),
+      ),
+      h('span', { class: 'row__value' }, song.title ? 'Change' : 'Choose'),
+      icon('caret-right', { size: 'sm' }),
+    ),
   );
+  card.querySelector('.icon').classList.add('icon--chevron');
+
+  box.append(section('Song', card));
+
+  if (song.title) {
+    box.append(section('Clip',
+      h('div', { class: 'group group--pad' },
+        sliderRow({
+          label: 'Starts at',
+          min: 0, max: Math.max(1, total - 1), step: 1,
+          value: Math.min(song.clipStartSeconds, total - 1),
+          format: value => `${formatTime(value)} of ${formatTime(total)}`,
+          onInput: value => {
+            song.clipStartSeconds = value;
+            app.save();
+            drawOnce(app);
+          },
+        }),
+      ),
+    ));
+  }
 }
 
 // ---------------------------------------------------------------------------

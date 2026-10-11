@@ -161,38 +161,31 @@ included. A style is the same project with the photo and song stripped out.
 
 ## The look
 
-The app is a darkroom bench, not a dark app. Three rules hold it together, and
-they are all enforced in `css/app.css`:
+The interface is built the way an iOS app is built, following Apple's design
+guidance (the `apple-design` skill), so it feels native on the phone it lives
+on. All of it lives in `css/app.css`.
 
-1. **Nothing is filled except the one thing you are meant to press.** Every
-   other control is a hairline and some light catching an edge. There are no
-   cards, no panels, and no rounded rectangle sitting inside a slightly lighter
-   rounded rectangle. That pattern is what makes most dark apps look alike.
-2. **Only pressable things have corners.** Buttons get a 10px radius; there is
-   exactly one `border-radius` rule in the whole stylesheet. Everything else is
-   square, like a print or a frame of film.
-3. **Time is always visible**, in monospace, to one decimal. A darkroom is a
-   place of measurement, so counts and durations sit at the end of the rule
-   that labels each group.
-
-Two pieces carry most of the character. The **title card** is the screen's name
-set large in tracked capitals with a short rule of safelight under it. The
-**bottle label** is a group's name in small tracked capitals, with a rule
-running out to a measured value at the end of it, the way a chemistry bottle is
-labelled:
-
-```
-TRAY ------------------------------------------------ 03 frames
-```
-
-The loop is shown on an **enlarger timer**: a ring with a sweep of light
-running round it and the count beside it, rather than a progress bar. It is the
-one piece of instrumentation in the app, and it is the time motif made literal.
-
-In the editor the slide has no frame, no corner radius and no shadow; it sits
-on black with the controls receding beneath it. On a square slide it reaches
-both screen edges. On 4:5 and 3:4 it stops 12 to 36px short, because an editor
-has to show you the whole frame and the bench needs its height.
+- **System type.** SF on Apple devices, sized on Apple's text styles, with
+  tracking that tightens as text grows. The slide still draws its words in
+  DM Sans, Instrument Serif and JetBrains Mono, so `js/app.js` loads those
+  faces by name at startup.
+- **Inset grouped lists**, like Settings. A section header names a group and a
+  footnote explains it.
+- **One tint** (system pink) for anything you can press. The photo is the most
+  colourful thing on screen.
+- **Translucent chrome.** The navigation bar is a blurred material that content
+  scrolls under. It is clear at the top of a page and turns solid once
+  something is underneath. A large title in the page becomes a small one in the
+  bar.
+- **Native controls**: segmented controls with a sliding thumb, switches,
+  round-thumb sliders and capsule chips. Every button shrinks slightly the
+  moment it is pressed, not when the finger lifts.
+- **Motion with a direction.** Going forward slides in from the right and going
+  back slides in from the left. Toasts come in from the top and leave the same
+  way. Transitions are critically damped, with no overshoot.
+- Follows the system **light and dark appearance**, and respects
+  `prefers-reduced-motion`, `prefers-reduced-transparency` and
+  `prefers-contrast`.
 
 ---
 
@@ -352,10 +345,9 @@ artwork CDN both send `Access-Control-Allow-Origin: *`, so a normal fetch works
 and covers load without spoiling the canvas. The JSONP path in `js/itunes.js`
 is kept in case that ever changes.
 
-**Dark only.** The whole idea is a darkroom, and a light mode would be a lit
-one. This is the one place the app ignores `prefers-color-scheme` on purpose.
-It does respect `prefers-reduced-motion`: movement becomes a plain fade, and
-the editor preview starts paused.
+**Light and dark.** The interface follows `prefers-color-scheme`. With
+`prefers-reduced-motion`, movement becomes a plain fade and the editor preview
+starts paused.
 
 ---
 
@@ -453,6 +445,10 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.9.0** - The interface rebuilt on Apple's design language: system type,
+  inset grouped lists, a translucent navigation bar with large titles,
+  segmented controls, switches, push and pop transitions, and light and dark
+  appearance. Nothing the app does changed.
 - **0.8.0** - A desktop and iPad layout. From 640px the column widens; from
   1024px, which is an iPad turned sideways, the bench moves to the side of
   the slide and lists run in two columns. The four dots on the selection

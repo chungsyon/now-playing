@@ -6,7 +6,7 @@
  * outlives the screen.
  */
 
-import { h, clear, icon, iconButton, toast, decodeImage } from './ui.js';
+import { h, clear, icon, toast, decodeImage } from './ui.js';
 import { ASPECTS, createProject, newId, applyTemplate } from './model.js';
 import { extractPalette, dedupeHex } from './color.js';
 import { putDraft, getDraft, debounce } from './db.js';
@@ -51,57 +51,74 @@ let topbar = null;
 // Moving between screens
 // ---------------------------------------------------------------------------
 
+// The order of the stack. Moving to a later screen pushes, an earlier one pops.
+const ORDER = ['home', 'song', 'editor', 'exportScreen'];
+const TITLES = { home: 'Now Playing', song: 'Song', editor: 'Editor', exportScreen: 'Export' };
+
 function go(name) {
   const leaving = SCREENS[state.screen];
   if (leaving && leaving.leave) leaving.leave();
 
+  const direction = ORDER.indexOf(name) >= ORDER.indexOf(state.screen) ? 'is-push' : 'is-pop';
   state.screen = name;
   buildTopbar();
 
   clear(screenRoot);
-  screenRoot.classList.remove('is-entering', 'screen--editor');
-  // Restart the fade so every screen change reads as a cut.
+  screenRoot.classList.remove('is-push', 'is-pop', 'screen--editor');
+  // Restart the animation so every screen change plays it.
   void screenRoot.offsetWidth;
-  screenRoot.classList.add('is-entering');
+  screenRoot.classList.add(direction);
 
   SCREENS[name].enter(screenRoot, app);
-  window.scrollTo(0, 0);
+  screenRoot.scrollTop = 0;
+  syncTopbar();
+}
+
+/** Where the back button goes from here. */
+function backTarget() {
+  if (state.screen === 'song') return state.project && state.project.song.title ? 'editor' : 'home';
+  if (state.screen === 'editor') return 'home';
+  return 'editor';
 }
 
 function buildTopbar() {
   clear(topbar);
-  if (state.screen === 'home') {
-    topbar.hidden = true;
-    return;
-  }
-  topbar.hidden = false;
+  const left = h('div', { class: 'topbar__left' });
+  const right = h('div', { class: 'topbar__right' });
+  let middle = h('div', { class: 'topbar__title' }, TITLES[state.screen]);
 
-  const back = iconButton('arrow-left', 'Go back', () => {
-    if (state.screen === 'song') go(state.project && state.project.song.title ? 'editor' : 'home');
-    else if (state.screen === 'editor') go('home');
-    else go('editor');
-  });
+  if (state.screen !== 'home') {
+    const target = backTarget();
+    left.append(h('button', {
+      class: 'btn btn--back',
+      type: 'button',
+      'aria-label': `Back to ${TITLES[target]}`,
+      onclick: () => go(target),
+    }, icon('caret-left'),
+    // The editor's bar is busy, so its back button is the chevron alone.
+    state.screen === 'editor' ? null : h('span', {}, TITLES[target])));
+  }
 
   if (state.screen === 'editor') {
-    topbar.append(
-      back,
-      h('div', { class: 'grow', style: { display: 'flex', justifyContent: 'center' } },
-        editor.templateSwitcher(app)),
-      h('button', {
-        class: 'btn',
-        type: 'button',
-        style: { minHeight: '44px', padding: '9px 14px' },
-        onclick: () => go('exportScreen'),
-      }, 'Export'),
-    );
-  } else {
-    const titles = { song: 'Song', exportScreen: 'Export' };
-    topbar.append(
-      back,
-      h('div', { class: 'topbar__title' }, titles[state.screen] || ''),
-      h('div', { style: { width: '44px' } }),
-    );
+    middle = editor.templateSwitcher(app);
+    middle.style.minWidth = '150px';
+    right.append(h('button', {
+      class: 'btn btn--primary btn--small',
+      type: 'button',
+      onclick: () => go('exportScreen'),
+    }, 'Export'));
   }
+
+  topbar.append(left, middle, right);
+}
+
+/**
+ * The bar becomes a material once something has scrolled under it, and its
+ * small title appears as the page's large one goes. The editor never
+ * scrolls, so its bar is always solid.
+ */
+function syncTopbar() {
+  topbar.classList.toggle('is-scrolled', state.screen === 'editor' || screenRoot.scrollTop > 30);
 }
 
 // ---------------------------------------------------------------------------
@@ -242,10 +259,22 @@ async function boot() {
   screenRoot = document.getElementById('screen');
   topbar = document.getElementById('topbar');
 
+  screenRoot.addEventListener('scroll', syncTopbar, { passive: true });
+  // Without a touch listener somewhere, iOS Safari never applies :active, and
+  // buttons would only respond once the finger lifts.
+  document.addEventListener('touchstart', () => {}, { passive: true });
+
   await loadIcons();
-  // Text is measured during rendering, so the fonts have to be there first.
-  if (document.fonts && document.fonts.ready) {
-    try { await document.fonts.ready; } catch { /* carry on with fallbacks */ }
+  // Text on the slide is measured during rendering, so its faces have to be
+  // there first. The interface uses the system font, so nothing on screen
+  // asks for them: they are loaded by name.
+  if (document.fonts) {
+    try {
+      await Promise.all([
+        '16px "DM Sans"', '16px "Instrument Serif"',
+        'italic 16px "Instrument Serif"', '16px "JetBrains Mono"',
+      ].map(face => document.fonts.load(face)));
+    } catch { /* carry on with fallbacks */ }
   }
 
   go('home');

@@ -80,11 +80,11 @@ export function iconButton(name, label, onClick, extraClass = '') {
 // ---------------------------------------------------------------------------
 
 /**
- * A labelled slider with its value shown in monospace on the right.
+ * A labelled slider with its value shown on the right.
  * `format` turns the raw number into what the eye reads.
  */
 export function sliderRow({ label, min, max, step, value, format, onInput }) {
-  const readout = h('span', { class: 'mono' }, format ? format(value) : String(value));
+  const readout = h('span', {}, format ? format(value) : String(value));
   const input = h('input', {
     class: 'slider',
     type: 'range',
@@ -113,117 +113,109 @@ export function sliderRow({ label, min, max, step, value, format, onInput }) {
 }
 
 /**
- * A row of mutually exclusive choices.
- * `options` is [{ value, label }]; `onPick` gets the chosen value.
+ * A segmented control: equal segments on a track, with a raised thumb that
+ * slides to the chosen one. `options` is [{ value, label }]; `onPick` gets
+ * the chosen value.
  */
 export function segmented(options, current, onPick, ariaLabel) {
-  const group = h('div', { class: 'choices', role: 'group', 'aria-label': ariaLabel || '' });
-  for (const option of options) {
+  const thumb = h('span', { class: 'seg__thumb', 'aria-hidden': 'true' });
+  const group = h('div', { class: 'seg', role: 'group', 'aria-label': ariaLabel || '' }, thumb);
+  group.style.setProperty('--n', String(options.length));
+  const buttons = options.map(option => {
     const button = h('button', {
       type: 'button',
-      'aria-pressed': String(option.value === current),
       onclick: () => onPick(option.value),
     }, option.label);
     button.dataset.value = String(option.value);
     group.append(button);
-  }
-  // Move the pressed state without rebuilding the row.
+    return button;
+  });
+  // Move the pressed state and the thumb without rebuilding the row.
   group.select = value => {
-    for (const button of group.children) {
-      button.setAttribute('aria-pressed', String(button.dataset.value === String(value)));
-    }
+    buttons.forEach((button, index) => {
+      const on = button.dataset.value === String(value);
+      button.setAttribute('aria-pressed', String(on));
+      if (on) group.style.setProperty('--i', String(index));
+    });
   };
+  group.select(current);
   return group;
+}
+
+/** A row with an on/off switch at its end. */
+export function switchRow(label, checked, onChange) {
+  const input = h('input', {
+    class: 'switch',
+    type: 'checkbox',
+    role: 'switch',
+    checked,
+    'aria-label': label,
+    onchange: () => onChange(input.checked),
+  });
+  return h('label', { class: 'row', style: { cursor: 'pointer' } },
+    h('span', { class: 'row__main' }, label), input);
 }
 
 export function emptyState(message) {
   return h('p', { class: 'empty' }, message);
 }
 
-/**
- * A title card: the screen's name, large and tracked wide, with a short rule
- * of safelight under it. One per screen, never more.
- */
-export function titleCard(text) {
-  return h('div', {},
-    h('h1', { class: 'titlecard' }, text),
-    h('div', { class: 'titlecard__rule' }),
+/** The page's large title, with an optional line under it. */
+export function largeTitle(text, subtitle = null) {
+  return h('div', { class: 'page__head' },
+    h('h1', { class: 'large-title' }, text),
+    subtitle ? h('p', { class: 'subtitle' }, subtitle) : null,
   );
 }
 
 /**
- * A bottle label: what this group of controls is, a rule running out to the
- * edge of the column, and optionally a measured value sitting at the end.
- *
- *   SHAPE ------------------------------------------- 1080 x 1350
+ * The small caps line over a group, with an optional value at its end.
+ * An empty string still gets a slot, so a count can be written into it once
+ * the list it measures has loaded. Only null means "no value here".
  */
-export function bottle(name, value = null) {
-  return h('p', { class: 'bottle' },
-    h('span', { class: 'bottle__name' }, name),
-    h('span', { class: 'bottle__line' }),
-    // An empty string still gets a slot, so a count can be written into it
-    // once the list it measures has loaded. Only null means "no value here".
-    value === null || value === undefined ? null : h('span', { class: 'bottle__value' }, value),
+export function sectionHead(name, value = null) {
+  return h('p', { class: 'section__head' },
+    h('span', {}, name),
+    value === null || value === undefined ? null : h('span', { class: 'section__value' }, value),
   );
 }
 
+/** A header, then whatever belongs under it. */
+export function section(head, ...children) {
+  return h('section', { class: 'section' },
+    typeof head === 'string' ? sectionHead(head) : head, ...children);
+}
+
+export function footnote(text) {
+  return h('p', { class: 'footnote' }, text);
+}
+
 /**
- * The enlarger timer. A ring with a sweep of light running round it and the
- * count beside it, instead of a progress bar. Returns the element plus a
- * `set` function, so the editor can drive it every frame without rebuilding
+ * The loop position, drawn like a player's scrubber: elapsed time, a track
+ * that fills, and the loop length. Returns the element plus a `set`
+ * function, so the editor can drive it every frame without rebuilding
  * anything.
  */
 export function loopTimer() {
-  const NS = 'http://www.w3.org/2000/svg';
-  const RADIUS = 15.5;
-  const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('class', 'timer__dial');
-  svg.setAttribute('viewBox', '0 0 36 36');
-  svg.setAttribute('aria-hidden', 'true');
-
-  const ring = document.createElementNS(NS, 'circle');
-  ring.setAttribute('class', 'timer__ring');
-  ring.setAttribute('cx', '18');
-  ring.setAttribute('cy', '18');
-  ring.setAttribute('r', String(RADIUS));
-
-  const sweep = document.createElementNS(NS, 'circle');
-  sweep.setAttribute('class', 'timer__sweep');
-  sweep.setAttribute('cx', '18');
-  sweep.setAttribute('cy', '18');
-  sweep.setAttribute('r', String(RADIUS));
-  sweep.setAttribute('stroke-dasharray', String(CIRCUMFERENCE));
-  sweep.setAttribute('stroke-dashoffset', String(CIRCUMFERENCE));
-
-  const hand = document.createElementNS(NS, 'line');
-  hand.setAttribute('class', 'timer__hand');
-  hand.setAttribute('x1', '18');
-  hand.setAttribute('y1', '18');
-  hand.setAttribute('x2', '18');
-  hand.setAttribute('y2', '5.5');
-
-  svg.append(ring, sweep, hand);
-
-  const now = h('b', {}, '0.0');
-  const total = h('span', {}, '/ 8.0');
-  const read = h('span', { class: 'timer__read' }, now, ' ', total);
-  const node = h('div', { class: 'timer' }, svg, read);
+  const fill = h('span', { class: 'timer__fill' });
+  const now = h('span', { class: 'timer__time' }, '0.0');
+  const total = h('span', { class: 'timer__time' }, '8.0');
+  const node = h('div', { class: 'timer', 'aria-hidden': 'true' },
+    now, h('span', { class: 'timer__track' }, fill), total);
   let lastNow = '0.0';
-  let lastTotal = '/ 8.0';
+  let lastTotal = '8.0';
 
   return {
     node,
     set(t, loopSeconds) {
       const fraction = loopSeconds > 0 ? Math.min(1, t / loopSeconds) : 0;
-      sweep.setAttribute('stroke-dashoffset', String(CIRCUMFERENCE * (1 - fraction)));
-      hand.setAttribute('transform', `rotate(${fraction * 360} 18 18)`);
+      // A transform, not a width, so it never costs a layout.
+      fill.style.transform = `scaleX(${fraction})`;
       // The count only shows tenths, so it is only written when a tenth has
       // gone by rather than on every frame.
       const tenths = t.toFixed(1);
       if (tenths !== lastNow) { now.textContent = tenths; lastNow = tenths; }
-      const whole = `/ ${loopSeconds.toFixed(1)}`;
+      const whole = loopSeconds.toFixed(1);
       if (whole !== lastTotal) { total.textContent = whole; lastTotal = whole; }
     },
   };
@@ -239,11 +231,15 @@ let toastTimer = null;
 export function toast(message, ms = 2600) {
   if (toastNode) toastNode.remove();
   clearTimeout(toastTimer);
-  toastNode = h('div', { class: 'toast', role: 'status' }, message);
-  document.body.append(toastNode);
+  const node = h('div', { class: 'toast', role: 'status' }, message);
+  toastNode = node;
+  document.body.append(node);
   toastTimer = setTimeout(() => {
-    if (toastNode) toastNode.remove();
-    toastNode = null;
+    // Leaves the way it came in, then goes.
+    node.classList.add('is-leaving');
+    node.addEventListener('animationend', () => node.remove(), { once: true });
+    setTimeout(() => node.remove(), 600);
+    if (toastNode === node) toastNode = null;
   }, ms);
 }
 

@@ -9,7 +9,7 @@
  * a long render finishes.
  */
 
-import { h, clear, icon, toast, titleCard, bottle } from '../ui.js';
+import { h, clear, icon, toast, largeTitle, section, footnote } from '../ui.js';
 import { formatTime } from '../model.js';
 import { Stage, render } from '../render.js';
 import { renderToVideo, saveVideo, exportSupport, FPS, bitrateFor } from '../export.js';
@@ -37,7 +37,7 @@ export async function enter(root, app) {
 
   const progress = h('div', { class: 'progress__fill' });
   const progressBar = h('div', { class: 'progress', hidden: true }, progress);
-  const status = h('p', { class: 'body' });
+  const status = h('p', { class: 'status', role: 'status' });
 
   const saveButton = h('button', {
     class: 'btn btn--primary btn--block',
@@ -53,12 +53,12 @@ export async function enter(root, app) {
       renderButton.disabled = true;
       saveButton.hidden = true;
       progressBar.hidden = false;
-      progress.style.width = '0%';
-      status.textContent = 'Developing…';
+      progress.style.transform = 'scaleX(0)';
+      status.textContent = 'Rendering…';
 
       try {
         lastResult = await renderToVideo(project, app.state.media, fraction => {
-          progress.style.width = `${Math.round(fraction * 100)}%`;
+          progress.style.transform = `scaleX(${fraction})`;
         });
         if (lastUrl) URL.revokeObjectURL(lastUrl);
         lastUrl = URL.createObjectURL(lastResult.blob);
@@ -75,9 +75,12 @@ export async function enter(root, app) {
         video.play().catch(() => {});
 
         status.textContent =
-          `Your print is ready. ${(lastResult.blob.size / 1048576).toFixed(1)} MB, ` +
+          `Ready. ${(lastResult.blob.size / 1048576).toFixed(1)} MB, ` +
           `made in ${lastResult.seconds.toFixed(1)}s.`;
         saveButton.hidden = false;
+        // Saving is the next step now, so it takes the filled style.
+        renderButton.classList.remove('btn--primary');
+        renderButton.textContent = 'Make Again';
         facts(factsBox, project, lastResult);
       } catch (error) {
         console.error(error);
@@ -87,43 +90,37 @@ export async function enter(root, app) {
         progressBar.hidden = true;
       }
     },
-  }, icon('aperture'), 'Make the slide');
+  }, 'Make the Slide');
 
-  const factsBox = h('dl', { class: 'facts' });
+  const factsBox = h('dl', { class: 'group facts' });
   facts(factsBox, project, null);
 
   const support = await exportSupport();
 
   root.append(
-    h('div', { class: 'stack stack--wide develops', style: { paddingTop: '10px' } },
-
-      titleCard('The print'),
+    h('div', { class: 'page' },
+      largeTitle('Export'),
 
       h('div', { class: 'slides' },
-        h('figure', { class: 'slide-card', style: { margin: '0' } },
-          photoThumb, h('figcaption', {}, 'Slide 1 / your photo')),
-        h('figure', { class: 'slide-card', style: { margin: '0' } },
-          slideThumb, h('figcaption', {}, 'Slide 2 / this app')),
+        h('figure', { class: 'slide-card' },
+          photoThumb, h('figcaption', {}, 'Slide 1 · Your photo')),
+        h('figure', { class: 'slide-card' },
+          slideThumb, h('figcaption', {}, 'Slide 2 · This slide')),
       ),
 
-      h('div', { class: 'stack', style: { gap: '10px' } },
-        bottle('The file'),
-        factsBox,
+      h('div', { class: 'section', style: { gap: '12px' } },
+        progressBar,
+        renderButton,
+        saveButton,
+        status,
+        !support.hasVideoEncoder || !support.h264
+          ? footnote('This browser has no frame-by-frame encoder, so the slide is recorded in ' +
+              'real time instead. It still comes out silent, just a little softer.')
+          : null,
       ),
-      progressBar,
-      status,
-      renderButton,
-      saveButton,
 
-      !support.hasVideoEncoder || !support.h264
-        ? h('p', { class: 'body' },
-            'This browser has no frame-by-frame encoder, so the slide is recorded in ' +
-            'real time instead. It still comes out silent, just a little softer.')
-        : null,
-
-      h('div', { class: 'stack', style: { gap: '10px' } },
-        bottle('In Instagram'),
-        h('ol', { class: 'checklist' },
+      section('In Instagram',
+        h('ol', { class: 'group steps', style: { margin: '0', padding: '0', listStyle: 'none' } },
           step(1, 'Add your photo first, as slide 1.'),
           step(2, 'Add this video second, as slide 2.'),
           project.song.title
@@ -131,9 +128,11 @@ export async function enter(root, app) {
                 ' by ', h('strong', {}, project.song.artist), '.'))
             : step(3, 'Add the song in Music.'),
           step(4, h('span', {}, 'Start the clip at ',
-            h('span', { class: 'mono' }, formatTime(project.song.clipStartSeconds)), '.')),
+            h('strong', { class: 'num' }, formatTime(project.song.clipStartSeconds)), '.')),
         ),
       ),
+
+      section('The file', factsBox),
     ),
   );
 }
@@ -148,23 +147,23 @@ export function leave() {
 }
 
 function step(number, content) {
-  return h('li', {}, h('span', { class: 'step' }, String(number).padStart(2, '0')),
-    h('span', {}, content));
+  return h('li', { class: 'row' }, h('span', { class: 'step' }, String(number)),
+    h('span', { class: 'row__main' }, content));
 }
 
 function facts(box, project, result) {
   clear(box);
   const rows = [
     ['Format', 'MP4, H.264'],
-    ['Size', `${project.aspect.w} x ${project.aspect.h}`],
+    ['Size', `${project.aspect.w} × ${project.aspect.h}`],
     ['Loop', `${project.loopSeconds.toFixed(1)}s at ${FPS} fps`],
     ['Frames', String(Math.round(project.loopSeconds * FPS))],
     ['Rate', `${(bitrateFor(project.loopSeconds) / 1e6).toFixed(1)} Mbps`],
-    ['Audio', 'none'],
+    ['Audio', 'None'],
   ];
   if (result) rows.push(['File', `${(result.blob.size / 1048576).toFixed(1)} MB`]);
   for (const [term, value] of rows) {
-    box.append(h('div', { class: 'facts__row' }, h('dt', {}, term), h('dd', {}, value)));
+    box.append(h('div', { class: 'row' }, h('dt', {}, term), h('dd', {}, value)));
   }
 }
 

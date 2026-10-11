@@ -6,7 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Now Playing</title>
 <meta name="description" content="Make the second Instagram slide: a silent looping animation that shows a song is attached.">
-<meta name="theme-color" content="#141312">
+<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 
 <!-- Running from the Home Screen on an iPhone -->
 <meta name="mobile-web-app-capable" content="yes">
@@ -18,7 +19,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="assets/icons/icon-192.png" type="image/png">
 
-<!-- The two faces that appear straight away, so the first screen does not reflow -->
+<!-- The faces the slide draws its words in. The interface itself uses the system font. -->
 <link rel="preload" href="assets/fonts/instrument-serif-400.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/dm-sans-var.woff2" as="font" type="font/woff2" crossorigin>
 
@@ -26,18 +27,13 @@
 </head>
 <body>
 
-<!-- The room: a soft light from overhead and a faint grain over everything.
-     Both are fixed and untouchable, so they never get in the way of a tap. -->
-<div class="room-light" aria-hidden="true"></div>
-<div class="room-grain" aria-hidden="true"></div>
-
 <div id="app">
-  <header class="topbar" id="topbar" hidden></header>
+  <header class="topbar" id="topbar"></header>
   <main class="screen is-active" id="screen"></main>
 </div>
 
 <noscript>
-  <p style="padding:24px;color:#F3EFE9;font-family:system-ui">
+  <p style="padding:24px;font-family:system-ui">
     This app builds the slide in your browser, so it needs JavaScript switched on.
   </p>
 </noscript>
