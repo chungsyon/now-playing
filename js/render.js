@@ -699,8 +699,10 @@ function drawProgressBar(ctx, layer, project, t, stage) {
   placed(ctx, layer, t, stage, (c, scale) => {
     const width = stage.width * scale;
     const half = width / 2;
-    const thickness = Math.max(2, stage.width * 0.0045);
-    const timeSize = stage.width * 0.024;
+    // Both go with the bar's own length, so the numbers shrink and grow with
+    // it rather than staying one size while the bar is pinched smaller.
+    const thickness = Math.max(2, width * 0.0075);
+    const timeSize = width * 0.028;
 
     // The line itself is always fully there.
     c.lineCap = 'round';
