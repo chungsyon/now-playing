@@ -732,7 +732,14 @@ button.row:active { background: var(--fill-strong); transition: none; }
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  /* Rows fade as they pass under the tabs instead of being cut off. */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
 }
+/* The sheet scrolls; nothing in it may be squeezed to fit instead. A group
+   clips its corners with overflow: hidden, which lets a flex column shrink
+   it, and the Effects tab was cutting its sliders off. */
+.sheet__body > * { flex-shrink: 0; }
 /* Inside the sheet the groups sit on the sheet's colour, so they step down. */
 .sheet .group, .sheet .empty, .sheet .chip { background: var(--bg-3); }
 .sheet .section__head, .sheet .footnote { padding-left: 4px; padding-right: 4px; }
@@ -750,15 +757,21 @@ button.row:active { background: var(--fill-strong); transition: none; }
 
 /* --- Keyframes ---------------------------------------------------------- */
 
+.key { color: var(--label-3); }
+.key[aria-pressed='true'] { color: var(--tint); }
+.key .icon { width: 16px; height: 16px; }
 .slider-row__head .key {
   width: 32px;
   min-width: 32px;
   height: 32px;
   margin: -6px -6px -6px 0;
-  color: var(--label-3);
 }
-.slider-row__head .key[aria-pressed='true'] { color: var(--tint); }
-.slider-row__head .key .icon { width: 16px; height: 16px; }
+
+/* A keyframe row with no slider: its name, its ◆, and the strip under it. */
+.key-row { flex-direction: column; align-items: stretch; gap: 0; padding-top: 4px; padding-bottom: 4px; }
+.key-row__head { display: flex; align-items: center; min-height: 36px; }
+.key-row__head .key { margin-right: -10px; }
+.key-row .keys { margin-left: 13px; margin-right: 13px; }
 .slider-row__head span:first-child { flex: 1; }
 
 /* The strip under a keyed slider: the loop from start to end, a diamond for
@@ -779,6 +792,9 @@ button.row:active { background: var(--fill-strong); transition: none; }
 }
 .keys__mark {
   position: absolute;
+  /* The sheet scrolls; without this a sideways drag can be taken for a scroll
+     and cancelled halfway. */
+  touch-action: none;
   top: 50%;
   width: 24px;
   height: 24px;

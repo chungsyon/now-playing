@@ -68,6 +68,7 @@ const checkpoint = debounce(() => {
 function restore(json) {
   state.project = JSON.parse(json);
   if (!state.project.layers.some(l => l.id === state.selectedLayerId)) state.selectedLayerId = null;
+  state.previewTime = Math.min(state.previewTime || 0, state.project.loopSeconds);
   buildTopbar();
   if (state.screen === 'editor') editor.rebuild(app);
   else go(state.screen);
@@ -134,7 +135,21 @@ let topbar = null;
 const ORDER = ['home', 'song', 'editor', 'exportScreen'];
 const TITLES = { home: 'Now Playing', song: 'Song', editor: 'Editor', exportScreen: 'Export' };
 
+let updateWaiting = false;
+let reloading = false;
+async function reloadForUpdate() {
+  if (reloading) return;
+  reloading = true;
+  // The save is finished before the page goes, so nothing is lost with it.
+  try { await app.save.flush(); } catch { /* reload regardless */ }
+  window.location.reload();
+}
+
 function go(name) {
+  if (updateWaiting && name === 'home') {
+    reloadForUpdate();
+    return;
+  }
   const leaving = SCREENS[state.screen];
   if (leaving && leaving.leave) leaving.leave();
 
@@ -313,6 +328,10 @@ async function setCover(blob) {
   state.media.cover = await decodeImage(blob);
   refreshPalette();
   await saveNow();
+  // The cover image is not part of the history, so a step from before it
+  // changed would bring back the old song with the new cover. A new cover
+  // starts the history again instead.
+  resetHistory();
   if (state.screen === 'editor') editor.redraw(app);
 }
 
@@ -380,12 +399,12 @@ async function boot() {
     // shows, rather than the old one until the app is opened again. Not on
     // the very first install, when there was nothing old to replace.
     if (navigator.serviceWorker.controller) {
-      let reloaded = false;
+      // Only from Home, where nothing is being edited or rendered. Opening
+      // the app lands there, which is when updates arrive; one that arrives
+      // mid-edit waits until you are back.
       navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (reloaded) return;
-        reloaded = true;
-        app.save.flush();
-        window.location.reload();
+        updateWaiting = true;
+        if (state.screen === 'home') reloadForUpdate();
       });
     }
     navigator.serviceWorker.register('sw.js').catch(error => {
@@ -396,7 +415,9 @@ async function boot() {
   // ⌘Z / Ctrl+Z undoes, ⇧⌘Z or Ctrl+Y redoes. Inside a text field the
   // field keeps them, for undoing typing.
   window.addEventListener('keydown', event => {
-    if (!(event.metaKey || event.ctrlKey) || !state.project) return;
+    // Only in the editor: elsewhere there is nothing on screen to undo, and
+    // on Export it would throw away a finished render.
+    if (!(event.metaKey || event.ctrlKey) || !state.project || state.screen !== 'editor') return;
     const target = event.target;
     if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName) && target.type !== 'range'
       && target.type !== 'checkbox') return;

@@ -13,7 +13,7 @@ import {
 import {
   TEMPLATES, applyTemplate, valueAt, findLayer, formatTime,
   actualRpm, LOOP_MIN, LOOP_MAX, LAYER_LABELS, toStyle, movesWith,
-  isKeyed, keyIndexAt, setValueAt, toggleKeyAt, moveKeyAt,
+  isKeyed, keyIndexAt, setValueAt, toggleKeyAt, SAME_MOMENT,
 } from '../model.js';
 import { EFFECTS, makeEffect } from '../effects.js';
 import { Stage, render } from '../render.js';
@@ -121,8 +121,9 @@ export async function enter(root, app) {
     getStage: () => stage,
     getSelectedId: () => app.state.selectedLayerId,
     onSelect: id => {
+      const changed = id !== app.state.selectedLayerId;
       app.state.selectedLayerId = id;
-      if (activeTab === 'effects' || activeTab === 'layers') buildSheet(app);
+      if (changed && (activeTab === 'effects' || activeTab === 'layers')) buildSheet(app, true);
       drawOnce(app);
     },
     onChange: () => {
@@ -150,6 +151,8 @@ export async function enter(root, app) {
     if (!app.state.selectedLayerId) return;
 
     const far = event.shiftKey ? 0.02 : 0.004;
+    // A nudge is a change at one moment, like a drag.
+    pause();
     if (gestures.nudge(step[0] * far, step[1] * far)) event.preventDefault();
   };
   window.addEventListener('keydown', onKey);
@@ -379,14 +382,34 @@ function keyTrack(app, { label, pairs, fallback = 0, onChange = () => {} }) {
     let downX = 0;
     let held = false;
     let dragging = false;
+    // The keyframes being carried, held by reference: once they pass another
+    // keyframe, looking them up by time would pick up the wrong one.
+    let carried = [];
     mark.addEventListener('pointerdown', event => {
       held = true;
       try { mark.setPointerCapture(event.pointerId); } catch { /* not capturable */ }
       downX = event.clientX;
       dragging = false;
+      carried = pairs().map(([holder, key]) => {
+        const prop = holder[key];
+        const index = keyIndexAt(prop, at);
+        return index >= 0 ? { prop, frame: prop.keyframes[index] } : null;
+      }).filter(Boolean);
       pause();
     });
-    mark.addEventListener('pointercancel', () => { held = false; });
+    const settle = () => {
+      // Dropped onto another keyframe: the one carried there replaces it.
+      for (const { prop, frame } of carried) {
+        prop.keyframes = prop.keyframes.filter(
+          other => other === frame || Math.abs(other.t - frame.t) >= SAME_MOMENT,
+        );
+      }
+      changed();
+    };
+    mark.addEventListener('pointercancel', () => {
+      if (held && dragging) settle();
+      held = false;
+    });
     mark.addEventListener('pointermove', event => {
       if (!held) return;
       if (!dragging && Math.abs(event.clientX - downX) < 4) return;
@@ -395,7 +418,10 @@ function keyTrack(app, { label, pairs, fallback = 0, onChange = () => {} }) {
       const fraction = Math.min(1, Math.max(0, (event.clientX - rect.left) / (rect.width || 1)));
       const to = Math.round(fraction * loop * 10) / 10;
       if (to === at) return;
-      for (const [holder, key] of pairs()) moveKeyAt(holder, key, at, to);
+      for (const { prop, frame } of carried) {
+        frame.t = to;
+        prop.keyframes.sort((a, b) => a.t - b.t);
+      }
       at = to;
       mark.style.left = `${(to / loop) * 100}%`;
       seek(app, to);
@@ -408,13 +434,14 @@ function keyTrack(app, { label, pairs, fallback = 0, onChange = () => {} }) {
         for (const [holder, key] of pairs()) {
           if (keyIndexAt(holder[key], at) >= 0) toggleKeyAt(holder, key, at, fallback);
         }
-      }
-      changed();
+        changed();
+      } else settle();
     });
     return mark;
   }
 
   function watch(t) {
+    if (!diamond.isConnected) return;
     const on = keyIndexAt(leadProp(), t) >= 0;
     if (diamond.dataset.on !== String(on)) {
       diamond.dataset.on = String(on);
@@ -459,7 +486,7 @@ function keyedSlider(app, { label, holder, key, pairs, min, max, step, fallback,
   });
   row.head.append(track.diamond);
   // While it plays, the slider follows the keyframes.
-  timeWatchers.push(t => { if (keyed()) row.set(read(t)); });
+  timeWatchers.push(t => { if (row.isConnected && keyed()) row.set(read(t)); });
   return h('div', {}, row, track.strip);
 }
 
@@ -621,12 +648,18 @@ function drawGuides(app, t) {
 // The bottom sheet
 // ---------------------------------------------------------------------------
 
-function buildSheet(app) {
+function buildSheet(app, toTop = false) {
+  // A rebuild on the same tab keeps its place. Without this every switch,
+  // eye and lock threw the sheet back to the top. A new selection goes to the
+  // top on purpose: that is where its Animate rows are.
+  const keep = !toTop && sheetBody.dataset.tab === activeTab ? sheetBody.scrollTop : 0;
+  sheetBody.dataset.tab = activeTab;
   clear(sheetBody);
   timeWatchers = [];
   keyRefreshers = [];
   const build = { layers: layersTab, effects: effectsTab, animation: animationTab, song: songTab };
   build[activeTab](sheetBody, app);
+  sheetBody.scrollTop = keep;
 }
 
 // --- Layers ----------------------------------------------------------------
@@ -682,8 +715,6 @@ function layersTab(box, app) {
       fallback: blurSpec.default,
       format: value => String(value),
     }));
-    blurBox.append(h('p', { class: 'footnote', style: { padding: '8px 0 0' } },
-      'Drag the bar under the slide to a moment, then tap \u25C6 to keyframe the blur there.'));
   };
   paintBlur();
 
@@ -714,51 +745,24 @@ function layersTab(box, app) {
     drawOnce(app);
   });
 
-  box.append(
-    section('Background', h('div', { class: 'section', style: { gap: '10px' } }, background, blurBox, swatches)),
-
-    section('Arrange',
-      h('div', { class: 'group' },
-        toggle('Show cover', project.showCover, on => { project.showCover = on; }),
-        // The frosted pane behind the furniture. Any template can have one.
-        switchRow('Glass card', project.layers.some(l => l.type === 'card'), on => {
-          setCard(project, on, currentTime(app));
-          app.save();
-          buildSheet(app);
-          drawOnce(app);
-        }),
-        toggle('Move together', project.grouped !== false, on => {
-          project.grouped = on;
-          groupNote.textContent = groupText();
-        }),
-      ),
-      groupNote,
-    ),
-  );
-  // Written into rather than rebuilt, so the switch keeps sliding.
-  const groupText = () => (project.grouped === false
-    ? 'Drag any layer and only that layer moves.'
-    : 'Cover, words and bar move as one, keeping their spacing. Lock one to leave it behind.')
-    // Said only where it applies. A finger pinches and twists and needs no
-    // telling; a mouse has to be shown the corners.
-    + (window.matchMedia('(pointer: fine)').matches
-      ? ' Drag a corner to resize, just outside one to turn. Arrow keys nudge, Shift for bigger steps.'
-      : '');
-  groupNote.textContent = groupText();
-
-  // Keyframes for where the selection is and how big. They apply to
-  // everything that moves with it, so a grouped arrangement animates as one.
+  // Keyframes for where the selection is, how big, turned and see-through.
+  // They apply to everything that moves with it, so a grouped arrangement
+  // animates as one. First on the tab, because selecting something is
+  // usually the step before animating it.
   const selected = findLayer(project, app.state.selectedLayerId);
   if (selected && selected.type !== 'photo' && !selected.locked) {
-    const members = () => movesWith(project, selected);
+    // The selected layer leads, so the strip and ◆ show its keyframes.
+    const members = () => {
+      const all = movesWith(project, selected);
+      return [selected, ...all.filter(layer => layer !== selected)];
+    };
     const keyRow = (label, keys) => {
       const track = keyTrack(app, {
         label,
         pairs: () => members().flatMap(layer => keys.map(key => [layer.props, key])),
       });
-      return h('div', { class: 'row', style: { flexDirection: 'column', alignItems: 'stretch', gap: '0' } },
-        h('div', { style: { display: 'flex', alignItems: 'center' } },
-          h('span', { class: 'row__main' }, label), track.diamond),
+      return h('div', { class: 'row key-row' },
+        h('div', { class: 'key-row__head' }, h('span', { class: 'row__main' }, label), track.diamond),
         track.strip);
     };
     box.append(section(sectionHead('Animate', members().length > 1 ? `${selected.name} and group` : selected.name),
@@ -773,11 +777,63 @@ function layersTab(box, app) {
           format: value => `${Math.round(value * 100)}%`,
         })),
       ),
-      footnote('Drag the bar under the slide to a moment and tap \u25C6, then move, resize or '
-        + 'turn the layer at another moment. Drag a keyframe to change when it happens; '
-        + 'click one to delete it.'),
+      footnote('Drag the bar under the slide to a moment and tap \u25C6. At another moment, move, '
+        + 'resize or turn the layer and a keyframe is added. Drag a keyframe to retime it; '
+        + 'click it to delete it.'),
     ));
   }
+
+  const card = project.layers.find(l => l.type === 'card');
+  box.append(
+    section('Background', h('div', { class: 'section', style: { gap: '10px' } }, background, blurBox, swatches)),
+
+    section('Arrange',
+      h('div', { class: 'group' },
+        toggle('Show cover', project.showCover, on => { project.showCover = on; }),
+        // The frosted pane behind the furniture. Any template can have one.
+        switchRow('Glass card', !!card, on => {
+          setCard(project, on);
+          app.save();
+          buildSheet(app);
+          drawOnce(app);
+        }),
+        toggle('Move together', project.grouped !== false, on => {
+          project.grouped = on;
+          groupNote.textContent = groupText();
+        }),
+      ),
+      groupNote,
+    ),
+
+    card ? section('Glass card',
+      h('div', { class: 'group group--pad' },
+        keyedSlider(app, {
+          label: 'Corner roundness',
+          holder: card.props, key: 'radius',
+          // Past a quarter of the width the curve starts eating into what is
+          // on the card, so that is where the slider stops.
+          min: 0, max: 0.25, step: 0.0025, fallback: 0.075,
+          format: value => `${Math.round(value * 400)}%`,
+        }),
+        keyedSlider(app, {
+          label: 'Glass blur',
+          holder: card.props, key: 'blur',
+          min: 0, max: 80, step: 1, fallback: 30,
+          format: value => String(value),
+        }),
+      ),
+    ) : null,
+  );
+  // Written into rather than rebuilt, so the switch keeps sliding.
+  const groupText = () => (project.grouped === false
+    ? 'Drag any layer and only that layer moves.'
+    : 'Everything on the photo moves as one, keeping its spacing. Lock a layer to leave it behind.')
+    // Said only where it applies. A finger pinches and twists and needs no
+    // telling; a mouse has to be shown the corners.
+    + (window.matchMedia('(pointer: fine)').matches
+      ? ' Drag a corner to resize, just outside one to turn. Arrow keys nudge, Shift for bigger steps.'
+      : '');
+  groupNote.textContent = groupText();
 
   // The list, topmost first, which is how it looks on the slide.
   const rows = h('div', { class: 'group' });
@@ -787,15 +843,17 @@ function layersTab(box, app) {
       type: 'button',
       onclick: () => {
         app.state.selectedLayerId = layer.locked ? null : layer.id;
-        buildSheet(app);
+        buildSheet(app, true);
         drawOnce(app);
       },
     },
       h('span', { class: 'row__main', style: { opacity: layer.visible ? '1' : '0.45' } },
         h('span', { class: 'row__title' }, layer.name),
-        h('span', { class: 'row__sub' },
-          [LAYER_LABELS[layer.type], layer.effects.length
-            ? `${layer.effects.length} effect${layer.effects.length > 1 ? 's' : ''}` : null]
+        // Only what the name does not already say: "Controls / Controls" is noise.
+        (sub => sub && h('span', { class: 'row__sub' }, sub))(
+          [LAYER_LABELS[layer.type] !== layer.name ? LAYER_LABELS[layer.type] : null,
+            layer.effects.length
+              ? `${layer.effects.length} effect${layer.effects.length > 1 ? 's' : ''}` : null]
             .filter(Boolean).join(' · ')),
       ),
     );
@@ -956,6 +1014,8 @@ function animationTab(box, app) {
           format: value => `${value} s`,
           onInput: value => {
             project.loopSeconds = value;
+            // A shorter loop must not leave the playhead past its end.
+            app.state.previewTime = Math.min(app.state.previewTime || 0, value);
             showLoop();
             refreshDisc();
             app.save();
@@ -1090,6 +1150,8 @@ export function templateSwitcher(app) {
     Object.values(TEMPLATES).map(t => ({ value: t.id, label: t.label })),
     app.state.project.template,
     value => {
+      // Tapping the template already in use is not a request to start over.
+      if (value === app.state.project.template) return;
       fitToSlide(applyTemplate(app.state.project, value));
       app.state.selectedLayerId = null;
       switcher.select(value);

@@ -1,7 +1,7 @@
 /** Run with: node js/gestures.test.mjs */
 import assert from 'node:assert/strict';
-import { pullTo, pullAngle, placeMembers, handleAt, layerBounds, fitToSlide } from './gestures.js';
-import { createProject, movesWith } from './model.js';
+import { pullTo, pullAngle, placeMembers, handleAt, layerBounds, fitToSlide, setCard } from './gestures.js';
+import { createProject, movesWith, valueAt, isKeyed } from './model.js';
 
 const near = (a, b, slack = 1e-9) => assert.ok(Math.abs(a - b) <= slack, `${a} != ${b}`);
 
@@ -133,6 +133,52 @@ for (const template of ['vinyl', 'player']) {
   // An upright slide already fits, so it is left exactly as the template made it.
   const tall = createProject({ template });
   assert.deepEqual(fitToSlide(structuredClone(tall)).layers, tall.layers);
+}
+
+
+// --- keyframes and groups ---------------------------------------------------
+{
+  // One member keyed, the rest plain: a drag at t=4 must move the group only
+  // at t=4, not drag the plain ones along at every moment.
+  const p = createProject({});
+  const [sleeve, ...rest] = movesWith(p, p.layers.find(l => l.type === 'cover'));
+  sleeve.props.x = { keyframes: [{ t: 0, value: 0.36 }] };
+  const stage = { width: 1080, height: 1350 };
+  const group = [sleeve, ...rest];
+  const start = {
+    t: 4, pivotX: 0.5, pivotY: 0.5,
+    members: group.map(layer => ({
+      layer, x: valueAt(layer.props.x, 4), y: valueAt(layer.props.y, 4),
+      scale: valueAt(layer.props.scale, 4), rotation: valueAt(layer.props.rotation, 4),
+    })),
+  };
+  const before = rest.map(layer => valueAt(layer.props.x, 0));
+  placeMembers(start, stage, 1, 0, 0.1, 0);
+  rest.forEach((layer, i) => {
+    assert.ok(isKeyed(layer.props.x), `${layer.name} was given keyframes`);
+    near(valueAt(layer.props.x, 0), before[i]);          // unmoved at the start
+    near(valueAt(layer.props.x, 4), before[i] + 0.1);    // moved where it was dragged
+  });
+}
+{
+  // A keyed style fitted onto a wide slide keeps its keyframes.
+  const p = createProject({ aspect: { id: 'x', w: 1080, h: 600 } });
+  const cover = p.layers.find(l => l.type === 'cover');
+  cover.props.y = { keyframes: [{ t: 0, value: 0.5 }, { t: 2, value: 0.7 }] };
+  fitToSlide(p, { w: 1080, h: 1350 });
+  assert.ok(isKeyed(cover.props.y) && cover.props.y.keyframes.length === 2, 'keyframes survive a fit');
+}
+{
+  // A card added to an animated group is keyed to travel with it.
+  const p = createProject({});
+  for (const layer of movesWith(p, p.layers.find(l => l.type === 'cover'))) {
+    const y = layer.props.y;
+    layer.props.y = { keyframes: [{ t: 0, value: y }, { t: 4, value: y - 0.2 }] };
+  }
+  setCard(p, true);
+  const card = p.layers.find(l => l.type === 'card');
+  assert.ok(isKeyed(card.props.y), 'the card is keyed');
+  near(valueAt(card.props.y, 0) - valueAt(card.props.y, 4), 0.2, 1e-6);
 }
 
 console.log('gestures: ok');

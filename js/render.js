@@ -364,6 +364,9 @@ const MOVES_WITH_TIME = new Set(['disc', 'progressBar']);
 /** True when this layer looks the same at every moment of the loop. */
 function holdsStill(layer) {
   if (MOVES_WITH_TIME.has(layer.type)) return false;
+  // The card shows the photo through it, which its own signature knows
+  // nothing about. glassBehind keeps the expensive part instead.
+  if (layer.type === 'card') return false;
   if (Object.values(layer.props).some(isKeyed)) return false;
   return !(layer.effects || []).some(effect => Object.values(effect.params || {}).some(isKeyed));
 }
@@ -830,7 +833,7 @@ function roundedRect(c, x, y, w, h, r) {
  * sits straight above it, as the Player template puts it. A layer slipped in
  * between would freeze into the glass until the photo next changed.
  */
-function glassBehind(stage, project, t) {
+function glassBehind(stage, project, t, pixels) {
   const photo = project.layers.find(l => l.type === 'photo');
   const key = JSON.stringify([
     photo && [photo.visible, photo.props, photo.effects],
@@ -839,10 +842,11 @@ function glassBehind(stage, project, t) {
     // ten times a second rather than every frame. Through a blur that heavy
     // the steps do not show; every frame if they ever do.
     photo && !holdsStill(photo) ? Math.round(t * 10) : 0,
+    Math.round(pixels * 2),
   ]);
   if (stage.glassKey === key) return stage.glass;
 
-  const blurred = stage.blurred(stage.canvas, stage.width * 0.03);
+  const blurred = stage.blurred(stage.canvas, pixels);
   // No canvas filter in this browser (Safari before 17): no glass, and the
   // card falls back to a deeper tint instead.
   if (blurred === stage.canvas) return null;
@@ -864,12 +868,18 @@ function glassBehind(stage, project, t) {
 function drawCard(ctx, layer, project, t, stage) {
   const p = layer.props;
   const tones = coverTones(project.palette);
-  const glass = glassBehind(stage, project, t);
+  // Blur is per 1000 pixels of slide width, like the Blur effect, so the
+  // preview and the file agree. Nothing to blur means clear glass.
+  const pixels = ((valueAt(p.blur, t) ?? 30) * stage.width) / 1000;
+  const frosted = pixels >= 0.5;
+  const glass = frosted ? glassBehind(stage, project, t, pixels) : null;
 
   placed(ctx, layer, t, stage, (c, scale) => {
     const w = stage.width * scale;
     const h = w * (valueAt(p.ratio, t) || 1.2);
-    const r = w * 0.075;
+    // Roundness is a fraction of the card's width; at its most the short
+    // sides become full semicircles.
+    const r = Math.min(Math.min(w, h) / 2, w * Math.max(0, valueAt(p.radius, t) ?? 0.075));
     const shape = () => roundedRect(c, -w / 2, -h / 2, w, h, r);
 
     // A soft shadow under the pane, drawn on its own so it never darkens the
@@ -879,7 +889,8 @@ function drawCard(ctx, layer, project, t, stage) {
     c.shadowBlur = w * 0.1;
     c.shadowOffsetY = w * 0.03;
     shape();
-    c.fillStyle = withAlpha(tones.deep, glass ? 0.3 : 0.6);
+    // No blur filter in this browser: a deeper tint stands in for the frost.
+    c.fillStyle = withAlpha(tones.deep, frosted && !glass ? 0.6 : 0.3);
     c.fill();
     c.restore();
 

@@ -90,7 +90,7 @@ export function valueAt(prop, t) {
 // read and write one value of `holder[key]` at a moment `t`, in seconds.
 
 /** Two keyframes closer than this are the same moment. */
-const SAME_MOMENT = 0.05;
+export const SAME_MOMENT = 0.05;
 
 export function isKeyed(prop) {
   return !!(prop && typeof prop === 'object' && Array.isArray(prop.keyframes));
@@ -137,15 +137,6 @@ export function toggleKeyAt(holder, key, t, fallback) {
   prop.keyframes.splice(index, 1);
   // The last keyframe gone: back to a plain value, the one showing now.
   if (prop.keyframes.length === 0) holder[key] = current;
-}
-
-/** Slide the keyframe at `from` to `to`, keeping them in time order. */
-export function moveKeyAt(holder, key, from, to) {
-  const prop = holder[key];
-  const index = keyIndexAt(prop, from);
-  if (index < 0) return;
-  prop.keyframes[index].t = to;
-  prop.keyframes.sort((a, b) => a.t - b.t);
 }
 
 // ---------------------------------------------------------------------------
@@ -267,7 +258,9 @@ export const TEMPLATES = {
           locked: true,
           effects: [{ type: 'blur', params: { radius: 34 } }],
         }),
-        makeLayer('card', 'Card', { x: 0.5, y: at(0), scale: 0.78 * k, ratio: 0.92 / 0.78 }),
+        makeLayer('card', 'Card', {
+          x: 0.5, y: at(0), scale: 0.78 * k, ratio: 0.92 / 0.78, radius: 0.075, blur: 30,
+        }),
         makeLayer('cover', 'Cover', { x: 0.5, y: at(-0.17 * k), scale: 0.46 * k, shadow: 0.5 }),
         makeLayer('text', 'Title', {
           bind: 'title', x: 0.5, y: at(0.125 * k), size: 0.054, scale: k, maxWidth: 0.66,
@@ -344,8 +337,10 @@ export function movesWith(project, layer) {
   // false turns it off.
   const grouped = project.grouped !== false;
   if (!grouped || layer.type === 'photo') return [layer];
+  // The layer itself always belongs, even hidden: what is done to the
+  // selection must reach the selection.
   return project.layers.filter(
-    other => other.type !== 'photo' && !other.locked && other.visible,
+    other => other === layer || (other.type !== 'photo' && !other.locked && other.visible),
   );
 }
 

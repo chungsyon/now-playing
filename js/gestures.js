@@ -18,7 +18,7 @@
  * the selection ever reaches the exported video.
  */
 
-import { valueAt, movesWith, setValueAt, makeLayer } from './model.js';
+import { valueAt, movesWith, setValueAt, makeLayer, isKeyed } from './model.js';
 
 // --- Snapping ---------------------------------------------------------------
 // Lining a thing up by thumb is guesswork, so the last little bit is done for
@@ -116,6 +116,26 @@ export function handleAt(layer, project, stage, x, y, t = 0) {
  */
 export function placeMembers(start, stage, k, turn, dx, dy) {
   const t = start.t || 0;
+  // If anything in the group is keyframed, the rest are given keyframes at
+  // the same moments, holding still. Otherwise a plain member would move at
+  // every moment while the keyed ones moved only at this one, and the group
+  // would come apart.
+  for (const key of ['x', 'y', 'scale', 'rotation']) {
+    const times = new Set();
+    for (const m of start.members) {
+      const prop = m.layer.props[key];
+      if (isKeyed(prop)) for (const frame of prop.keyframes) times.add(frame.t);
+    }
+    if (!times.size) continue;
+    for (const m of start.members) {
+      const props = m.layer.props;
+      if (isKeyed(props[key])) continue;
+      const still = valueAt(props[key], t);
+      props[key] = {
+        keyframes: [...times].sort((a, b) => a - b).map(at => ({ t: at, value: still, ease: 'inOut' })),
+      };
+    }
+  }
   const radians = (turn * Math.PI) / 180;
   const cos = Math.cos(radians);
   const sin = Math.sin(radians);
@@ -227,13 +247,18 @@ export function fitToSlide(project, madeFor = null) {
   const midX = (box.left + box.right) / 2;
   const midY = (box.top + box.bottom) / 2;
 
+  // Keyframed values are moved keyframe by keyframe, so a style that
+  // animates keeps animating on a slide of another shape.
+  const remap = (prop, fn) => {
+    if (!isKeyed(prop)) return fn(prop);
+    for (const frame of prop.keyframes) frame.value = fn(frame.value);
+    return prop;
+  };
   for (const layer of layers) {
     const p = layer.props;
-    const x = valueAt(p.x, 0) * source.width;
-    const y = valueAt(p.y, 0) * source.height;
-    p.x = (W / 2 + (x - midX) * k) / W;
-    p.y = (H / 2 + (y - midY) * k) / H;
-    p.scale = valueAt(p.scale, 0) * k;
+    p.x = remap(p.x, x => (W / 2 + (x * source.width - midX) * k) / W);
+    p.y = remap(p.y, y => (H / 2 + (y * source.height - midY) * k) / H);
+    p.scale = remap(p.scale, scale => scale * k);
   }
   project.layoutAspect = { w: W, h: H };
   return project;
@@ -244,38 +269,61 @@ export function fitToSlide(project, madeFor = null) {
  * round it, or take it away. It goes straight above the photo, which is
  * where the glass expects to be.
  */
-export function setCard(project, on, t = 0) {
+export function setCard(project, on) {
   project.layers = project.layers.filter(l => l.type !== 'card');
   if (!on) return project;
 
   const stage = { width: project.aspect.w, height: project.aspect.h };
   const furniture = project.layers.filter(l => l.type !== 'photo' && l.visible);
   if (!furniture.length) return project;
-  let left = Infinity;
-  let right = -Infinity;
-  let top = Infinity;
-  let bottom = -Infinity;
+
+  // Where the card goes at one moment: round the furniture, with room.
+  const around = t => {
+    let left = Infinity;
+    let right = -Infinity;
+    let top = Infinity;
+    let bottom = -Infinity;
+    for (const layer of furniture) {
+      const b = layerBounds(layer, project, stage, t);
+      const reach = Math.max(b.w, b.h) / 2;
+      const halfW = b.rotation ? reach : b.w / 2;
+      const halfH = b.rotation ? reach : b.h / 2;
+      left = Math.min(left, b.cx - halfW);
+      right = Math.max(right, b.cx + halfW);
+      top = Math.min(top, b.cy - halfH);
+      bottom = Math.max(bottom, b.cy + halfH);
+    }
+    const pad = stage.width * 0.06;
+    const w = right - left + pad * 2;
+    return {
+      x: (left + right) / 2 / stage.width,
+      y: (top + bottom) / 2 / stage.height,
+      scale: w / stage.width,
+      ratio: (bottom - top + pad * 2) / w,
+    };
+  };
+
+  // If the furniture is animated, the card is worked out at each of its
+  // keyframes and keyed to match, so it travels with what it holds.
+  const times = new Set();
   for (const layer of furniture) {
-    const b = layerBounds(layer, project, stage, t);
-    const reach = Math.max(b.w, b.h) / 2;
-    const halfW = b.rotation ? reach : b.w / 2;
-    const halfH = b.rotation ? reach : b.h / 2;
-    left = Math.min(left, b.cx - halfW);
-    right = Math.max(right, b.cx + halfW);
-    top = Math.min(top, b.cy - halfH);
-    bottom = Math.max(bottom, b.cy + halfH);
+    for (const key of ['x', 'y', 'scale']) {
+      const prop = layer.props[key];
+      if (isKeyed(prop)) for (const frame of prop.keyframes) times.add(frame.t);
+    }
   }
-  const pad = stage.width * 0.06;
-  const w = right - left + pad * 2;
-  const h = bottom - top + pad * 2;
-  const card = makeLayer('card', 'Card', {
-    x: (left + right) / 2 / stage.width,
-    y: (top + bottom) / 2 / stage.height,
-    scale: w / stage.width,
-    ratio: h / w,
-  });
-  const at = project.layers.findIndex(l => l.type === 'photo') + 1;
-  project.layers.splice(at, 0, card);
+  const first = around([...times][0] ?? 0);
+  const props = { ...first, radius: 0.075, blur: 30 };
+  if (times.size) {
+    const sorted = [...times].sort((a, b) => a - b);
+    const at = sorted.map(around);
+    for (const key of ['x', 'y', 'scale']) {
+      props[key] = { keyframes: sorted.map((t, i) => ({ t, value: at[i][key], ease: 'inOut' })) };
+    }
+  }
+  const card = makeLayer('card', 'Card', props);
+  const index = project.layers.findIndex(l => l.type === 'photo') + 1;
+  project.layers.splice(index, 0, card);
   return project;
 }
 

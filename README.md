@@ -445,6 +445,12 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.14.0** - The glass card's corner roundness and blur are sliders (and
+  keyframeable) under Layers while the card is on. A clean-up pass: Animate
+  comes first when a layer is selected, the sheet keeps its place when it
+  redraws, sheet groups are no longer squeezed (the Effects tab was cutting
+  its sliders off), rows fade under the tabs, and layer rows drop subtitles
+  that only repeated their name.
 - **0.13.0** - Undo and redo: buttons beside the back button in the editor,
   and ⌘Z / Ctrl+Z, ⇧⌘Z / Ctrl+Y. A drag or a slider pull is one step.
   Opacity joins position, size and rotation as something to keyframe, and a
