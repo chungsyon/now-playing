@@ -317,7 +317,7 @@ export const TEMPLATES = {
       return [
         makeLayer('photo', 'Photo', { mode: 'photo' }, { locked: true }),
         makeLayer('card', 'Card', {
-          x, y: at(-0.04), scale: 0.4, ratio: 1.95, radius: 0.09, corners: 'bookmark', blur: 30,
+          x, y: at(-0.02), scale: 0.4, ratio: 2.2, radius: 0.09, corners: 'bookmark', blur: 30,
         }),
         makeLayer('text', 'Label', {
           ...round, bind: null, text: 'Now playing', uppercase: true, maxWidth: 0.34,
@@ -332,8 +332,8 @@ export const TEMPLATES = {
           ...round, bind: 'artist', maxWidth: 0.33,
           y: at(0.045), size: 0.026, weight: 500, tracking: 0, tone: 'accent',
         }),
-        makeLayer('progressBar', 'Progress', { x, y: at(0.14), scale: 0.32, speed: 1, showTimes: true }),
-        makeLayer('controls', 'Controls', { x, y: at(0.25), scale: 0.26, ring: true }),
+        makeLayer('progressBar', 'Progress', { x, y: at(0.16), scale: 0.32, speed: 1, showTimes: true }),
+        makeLayer('controls', 'Controls', { x, y: at(0.28), scale: 0.26, ring: true }),
       ];
     },
   },

@@ -445,6 +445,7 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.19.3** - Bookmark's card starts at 220% of its width tall.
 - **0.19.2** - Readable on in-between backgrounds too. Each line's colour is
   pushed lighter or darker, keeping its hue, until it clears the usual
   reading contrast (4.5:1, 7:1 for the main ink) against what is actually
