@@ -95,12 +95,13 @@ export function handleAt(layer, project, stage, x, y, t = 0) {
   const turn = turnReach(stage);
   const outside = Math.abs(localX) > halfW || Math.abs(localY) > halfY;
 
-  for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-    const away = Math.hypot(localX - sx * halfW, localY - sy * halfY);
-    if (away <= grab) return 'scale';
-    // Turning lives outside the box only, so the inside stays a plain drag.
-    if (outside && away <= grab + turn) return 'rotate';
-  }
+  // The nearest corner decides. On a short box two corners can both be in
+  // reach, and the first one found is not always the one meant.
+  const away = Math.min(...[[-1, -1], [1, -1], [1, 1], [-1, 1]]
+    .map(([sx, sy]) => Math.hypot(localX - sx * halfW, localY - sy * halfY)));
+  if (away <= grab) return 'scale';
+  // Turning lives outside the box only, so the inside stays a plain drag.
+  if (outside && away <= grab + turn) return 'rotate';
   return null;
 }
 
@@ -170,8 +171,10 @@ export function layerBounds(layer, project, stage, t = 0) {
 
   let w;
   let h;
-  // Text set from its left or right end sits to one side of its point.
+  // Text set from its left or right end sits to one side of its point, and
+  // a bar's times hang below it, so the box is not always centred on x, y.
   let shift = 0;
+  let drop = 0;
   switch (layer.type) {
     case 'photo':
       return { cx: stage.width / 2, cy: stage.height / 2, w: stage.width, h: stage.height, rotation: 0 };
@@ -193,10 +196,21 @@ export function layerBounds(layer, project, stage, t = 0) {
       shift = p.align === 'left' ? w / 2 : p.align === 'right' ? -w / 2 : 0;
       break;
     }
-    case 'progressBar':
+    case 'progressBar': {
+      // Just the bar, its knob and the times under it, as render.js draws them.
       w = stage.width * scale;
-      h = stage.width * 0.11;
+      const pill = p.style === 'pill';
+      const thickness = pill ? w * 0.032 : Math.max(2, w * 0.0075);
+      const knob = pill ? thickness * 0.85 : thickness * 1.9;
+      const timeSize = w * (p.font ? 0.045 : 0.036);
+      const timesAt = pill ? thickness / 2 + timeSize * 1.3 : timeSize * 1.9;
+      const pad = stage.width * 0.012;
+      const top = -knob - pad;
+      const bottom = (p.showTimes ? timesAt + timeSize * 0.6 : knob) + pad;
+      h = bottom - top;
+      drop = (top + bottom) / 2;
       break;
+    }
     case 'controls':
       w = stage.width * scale;
       h = stage.width * scale * 0.42;
@@ -212,7 +226,11 @@ export function layerBounds(layer, project, stage, t = 0) {
       h = w;
   }
   const turn = (rotation * Math.PI) / 180;
-  return { cx: cx + shift * Math.cos(turn), cy: cy + shift * Math.sin(turn), w, h, rotation };
+  return {
+    cx: cx + shift * Math.cos(turn) - drop * Math.sin(turn),
+    cy: cy + shift * Math.sin(turn) + drop * Math.cos(turn),
+    w, h, rotation,
+  };
 }
 
 /**

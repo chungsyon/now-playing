@@ -445,6 +445,9 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.21.1** - The progress bar's selection box hugs the bar, its knob and
+  the times under it, instead of a fixed tall box. A corner handle now
+  always goes to the nearest corner, which a short box needed.
 - **0.21.0** - A Media template, after Android's media card: a wide panel
   made of the cover itself (darkened toward the words, with a Darken
   slider), the song set left in Figtree, a thick pill progress bar with
