@@ -293,30 +293,109 @@ export class Stage {
   }
 
   /**
-   * The browser's own gaussian, on a scratch canvas of the same size.
+   * Frosted glass, on a scratch canvas of the same size.
+   *
+   * A plain gaussian smears everything evenly, which reads as a blurred
+   * photo rather than as glass. Frosted glass is a rough surface: each point
+   * of it bends light from somewhere slightly different, so the picture
+   * breaks into a soft speckle, and the scattered light leaves a milky haze.
+   * So: the picture is softened, then every pixel takes its colour from a
+   * random spot nearby (fixed per slide, so nothing shimmers from frame to
+   * frame), which leaves a fine grain, and a faint white veil goes on top.
    *
    * `pixels` is in this stage's pixels, so the caller converts from the
    * stored radius first. Anything smaller than half a pixel is not a blur.
    */
   blurred(source, pixels) {
     if (!(pixels >= 0.5)) return source;
-    // Safari only learned this in 17. On anything older the layer is drawn
-    // sharp rather than wrong, and nothing else about the slide changes.
+    // Safari only learned canvas filters in 17. On anything older the layer
+    // is drawn sharp rather than wrong, and nothing else about the slide changes.
     if (!('filter' in this.layerCtx)) return source;
+    const W = this.width;
+    const H = this.height;
     if (!this.blurCanvas) {
       this.blurCanvas = document.createElement('canvas');
-      this.blurCanvas.width = this.width;
-      this.blurCanvas.height = this.height;
+      this.blurCanvas.width = W;
+      this.blurCanvas.height = H;
       this.blurCtx = this.blurCanvas.getContext('2d');
+      this.frostCanvas = document.createElement('canvas');
+      this.frostCanvas.width = W;
+      this.frostCanvas.height = H;
+      this.frostCtx = this.frostCanvas.getContext('2d', { willReadFrequently: true });
     }
     const c = this.blurCtx;
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.filter = 'none';
-    c.clearRect(0, 0, this.width, this.height);
-    c.filter = `blur(${pixels}px)`;
-    c.drawImage(source, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+    c.globalAlpha = 1;
+    c.clearRect(0, 0, W, H);
+
+    // Scatter. A photo that cannot be read back (one from another site)
+    // simply skips it and gets the plain blur.
+    let soft = source;
+    try {
+      const f = this.frostCtx;
+      f.clearRect(0, 0, W, H);
+      // Most of the softness first, so the speckle is made of colour, not of
+      // the photo's own sharp detail.
+      f.filter = `blur(${pixels * 0.75}px)`;
+      f.drawImage(source, 0, 0);
+      f.filter = 'none';
+      const image = f.getImageData(0, 0, W, H);
+      const from = new Uint32Array(image.data.buffer.slice(0));
+      const to = new Uint32Array(image.data.buffer);
+      // ponytail: about 55 ms at 1080 x 1350, paid once while the photo
+      // holds still. A keyframed blur pays it every frame (about 15 fps in
+      // the preview); move this into the WebGL effects pass if that matters.
+      const jitter = this.jitter();
+      const reach = pixels * 0.6;
+      for (let y = 0, i = 0; y < H; y++) {
+        for (let x = 0; x < W; x++, i++) {
+          let sx = x + ((jitter[i * 2] * reach) / 127 | 0);
+          let sy = y + ((jitter[i * 2 + 1] * reach) / 127 | 0);
+          sx = sx < 0 ? 0 : sx >= W ? W - 1 : sx;
+          sy = sy < 0 ? 0 : sy >= H ? H - 1 : sy;
+          to[i] = from[sy * W + sx];
+        }
+      }
+      f.putImageData(image, 0, 0);
+      soft = this.frostCanvas;
+    } catch { /* unreadable: plain blur below */ }
+
+    // The speckle is the grain of the glass, so it is left as it is: even a
+    // pixel or two of blur on top smooths it straight back into a photo.
+    if (soft === source) c.filter = `blur(${pixels}px)`;
+    c.drawImage(soft, 0, 0);
     c.filter = 'none';
+
+    // The milky haze of scattered light, only where there is something.
+    c.globalCompositeOperation = 'source-atop';
+    c.globalAlpha = Math.min(0.12, (pixels / W) * 2.5);
+    c.fillStyle = '#FFFFFF';
+    c.fillRect(0, 0, W, H);
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = 'source-over';
     return this.blurCanvas;
+  }
+
+  /**
+   * Which way each pixel looks for its colour, two signed bytes apiece.
+   * Made once per stage. Two random numbers added together lean towards the
+   * middle, so most pixels move a little and a few move a lot, as the bumps
+   * on real frosted glass do.
+   */
+  jitter() {
+    if (!this.jitterTable) {
+      const table = new Int8Array(this.width * this.height * 2);
+      let seed = 1234567;
+      const random = () => {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return seed / 0x7fffffff;
+      };
+      for (let i = 0; i < table.length; i++) table[i] = Math.round((random() + random() - 1) * 127);
+      this.jitterTable = table;
+    }
+    return this.jitterTable;
   }
 
   /**

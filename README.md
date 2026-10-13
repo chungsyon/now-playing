@@ -445,6 +445,11 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.18.1** - Blur is frosted glass now, not a smoothed photo: the picture
+  is softened, every pixel then takes its colour from a random spot nearby
+  (fixed, so nothing shimmers), which leaves the fine grain of sandblasted
+  glass, and a faint milky veil goes over it. The blurred background and the
+  glass card both use it.
 - **0.18.0** - Corner shapes for the glass card and the colour window: all
   round, bookmark, top right and bottom left, top left and bottom right, top
   only, or square. The preview zooms (100 to 300%, the − and + by the
