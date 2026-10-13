@@ -319,12 +319,8 @@ export const TEMPLATES = {
           x, y: at(-0.04), scale: 0.4, ratio: 1.95, radius: 0.09, bigCorner: 0.2, blur: 30,
         }),
         makeLayer('text', 'Label', {
-          ...round, bind: null, text: 'Playing now', uppercase: true,
-          y: at(-0.37), size: 0.021, weight: 500, tracking: 0.06,
-        }),
-        makeLayer('text', 'Heading', {
-          ...round, bind: 'artist', uppercase: true, maxWidth: 0.33,
-          y: at(-0.338), size: 0.024, weight: 700, tracking: 0.16,
+          ...round, bind: null, text: 'Playing now', uppercase: true, maxWidth: 0.33,
+          y: at(-0.345), size: 0.03, weight: 600, tracking: 0.12,
         }),
         makeLayer('cover', 'Cover', { x, y: at(-0.17), scale: 0.24, shadow: 0.35, round: true }),
         makeLayer('text', 'Title', {

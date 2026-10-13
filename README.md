@@ -445,6 +445,8 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.17.3** - Bookmark: the artist line under "Playing now" is gone, and
+  "Playing now" is larger and bolder in its place.
 - **0.17.2** - Text on the slide has no drop shadow: clean, flat lettering.
 - **0.17.1** - With Move together on, a corner of the glass card or the
   colour window resizes the whole arrangement. Off, it reshapes just that
