@@ -445,6 +445,14 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.19.0** - Words, the bar and the buttons pick their colour from what is
+  behind them: the slide under each is measured, and over anything bright
+  they turn dark in the cover's own hue. The glass card is a touch deeper
+  so pale words on it hold. Frosted grain is on the glass card only (the
+  photo is a smooth blur again), with a Frost grain slider. The editor
+  sheet is split by what you are working on: Slide (background, what is on
+  the slide, the layer list) and Layer (the selected layer's text or shape,
+  its keyframes and its effects), which opens when you tap something.
 - **0.18.1** - Blur is frosted glass now, not a smoothed photo: the picture
   is softened, every pixel then takes its colour from a random spot nearby
   (fixed, so nothing shimmers), which leaves the fine grain of sandblasted

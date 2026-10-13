@@ -209,3 +209,29 @@ export function coverTones(palette) {
   tonesKept.set(key, tones);
   return tones;
 }
+
+const darkKept = new Map();
+
+/**
+ * The same tones turned round for a bright backdrop: dark words in the
+ * cover's own hue instead of pale ones, and an accent pulled down until it
+ * holds against white.
+ */
+export function coverTonesDark(palette) {
+  const key = palette.slice(0, 5).join();
+  if (darkKept.has(key)) return darkKept.get(key);
+  const light = coverTones(palette);
+  let accent = parse(light.accent);
+  for (let step = 0; luminance(accent) > 0.18 && step < 14; step++) {
+    accent = mix(accent, [0, 0, 0], 0.12);
+  }
+  const base = parse(light.deep);
+  const tones = {
+    accent: toHex(accent),
+    ink: toHex(mix(base, [0, 0, 0], 0.55)),
+    soft: toHex(mix(base, [0, 0, 0], 0.25)),
+    deep: light.ink,
+  };
+  darkKept.set(key, tones);
+  return tones;
+}

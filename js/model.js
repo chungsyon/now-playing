@@ -286,7 +286,6 @@ export const TEMPLATES = {
     fitsAnyShape: true,
     build(aspect = ASPECTS[1]) {
       const at = offset => 0.5 + offset * (aspect.w / aspect.h);
-      const white = '#FFFFFF';
       return [
         makeLayer('photo', 'Photo', { mode: 'photo', mono: 1 }, { locked: true }),
         makeLayer('window', 'Window', { x: 0.5, y: at(-0.18), scale: 0.5, ratio: 1.3, radius: 0.06 }),
@@ -294,11 +293,11 @@ export const TEMPLATES = {
         makeLayer('cover', 'Cover', { x: 0.31, y: at(0.245), scale: 0.12, shadow: 0.35 }),
         makeLayer('text', 'Title', {
           bind: 'title', x: 0.4, y: at(0.225), size: 0.056, maxWidth: 0.36,
-          font: 'elegant', weight: 500, align: 'left', tracking: 0, color: white,
+          font: 'elegant', weight: 500, align: 'left', tracking: 0,
         }),
         makeLayer('text', 'Artist', {
           bind: 'artist', x: 0.4, y: at(0.272), size: 0.028, maxWidth: 0.36,
-          font: 'sans', weight: 400, align: 'left', tracking: 0.02, color: white,
+          font: 'sans', weight: 400, align: 'left', tracking: 0.02,
         }),
         makeLayer('progressBar', 'Progress', { x: 0.5, y: at(0.37), scale: 0.5, speed: 1, showTimes: true }),
         makeLayer('controls', 'Controls', { x: 0.5, y: at(0.47), scale: 0.24 }),

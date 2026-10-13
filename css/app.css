@@ -832,6 +832,33 @@ button.row:active { background: var(--fill-strong); transition: none; }
 .sheet .row, .sheet .group--pad { padding-left: 12px; padding-right: 12px; }
 .sheet .group { --inset: 12px; }
 
+/* A row that opens something: tinted words and a chevron, like Settings. */
+.row--link { color: var(--tint); font-size: 15px; }
+.row--link .icon { color: var(--label-3); }
+
+/* Layer tab: the way back to the list, and what is being edited. */
+.layer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
+.layer-head__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px 4px 0;
+  border: 0;
+  background: none;
+  color: var(--tint);
+  font-size: 15px;
+  cursor: pointer;
+}
+.layer-head__back:active { opacity: 0.5; }
+.layer-head__name {
+  color: var(--label);
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .effect__head { display: flex; align-items: center; gap: 0; padding-left: 12px; min-height: var(--tap); }
 .effect__name { flex: 1; font-weight: 600; font-size: 15px; }
 .effect__head .btn--icon { color: var(--label-2); }

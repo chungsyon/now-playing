@@ -45,7 +45,8 @@ let playing = false;
 let playStart = 0;
 let timer = null;
 let sheetBody = null;
-let activeTab = 'layers';
+let activeTab = 'slide';
+let tabSwitchRef = null;
 let currentApp = null;
 let onResize = null;
 let onKey = null;
@@ -114,8 +115,8 @@ export async function enter(root, app) {
 
   sheetBody = h('div', { class: 'sheet__body' });
   const tabSwitch = segmented([
-    { value: 'layers', label: 'Layers' },
-    { value: 'effects', label: 'Effects' },
+    { value: 'slide', label: 'Slide' },
+    { value: 'layer', label: 'Layer' },
     { value: 'animation', label: 'Motion' },
     { value: 'song', label: 'Song' },
   ], activeTab, value => {
@@ -124,6 +125,7 @@ export async function enter(root, app) {
     buildSheet(app);
     sheetBody.scrollTop = 0;
   }, 'Controls');
+  tabSwitchRef = tabSwitch;
   const tabs = h('div', { class: 'sheet__tabs' }, tabSwitch);
 
   root.classList.add('screen--editor');
@@ -162,7 +164,10 @@ export async function enter(root, app) {
     onSelect: id => {
       const changed = id !== app.state.selectedLayerId;
       app.state.selectedLayerId = id;
-      if (changed && (activeTab === 'effects' || activeTab === 'layers')) buildSheet(app, true);
+      // The sheet follows the selection: picking something on the slide
+      // opens its settings, the way an inspector does.
+      if (changed && id && activeTab === 'slide') showTab(app, 'layer');
+      else if (changed && activeTab === 'layer') buildSheet(app, true);
       drawOnce(app);
     },
     onChange: () => {
@@ -773,12 +778,26 @@ function buildSheet(app, toTop = false) {
   clear(sheetBody);
   timeWatchers = [];
   keyRefreshers = [];
-  const build = { layers: layersTab, effects: effectsTab, animation: animationTab, song: songTab };
+  const build = { slide: slideTab, layer: layerTab, animation: animationTab, song: songTab };
   build[activeTab](sheetBody, app);
   sheetBody.scrollTop = keep;
 }
 
-// --- Layers ----------------------------------------------------------------
+/** Switch the sheet to a tab from code, keeping the tab bar in step. */
+function showTab(app, tab) {
+  activeTab = tab;
+  if (tabSwitchRef) tabSwitchRef.select(tab);
+  buildSheet(app, true);
+}
+
+/** Select a layer (or nothing) and show what it can do. */
+function pick(app, id) {
+  app.state.selectedLayerId = id;
+  showTab(app, 'layer');
+  drawOnce(app);
+}
+
+// --- Slide and Layer ---------------------------------------------------------
 
 /**
  * Pick which corners of a pane are round. Each button is a little drawing
@@ -808,7 +827,61 @@ function shapePicker(app, layer) {
   return row;
 }
 
-function layersTab(box, app) {
+/** The layers, topmost first, each with its eye and lock. */
+function layerList(app) {
+  const project = app.state.project;
+  // The list, topmost first, which is how it looks on the slide.
+  const rows = h('div', { class: 'group' });
+  for (const layer of [...project.layers].reverse()) {
+    const select = h('button', {
+      class: 'row' + (layer.id === app.state.selectedLayerId ? ' is-selected' : ''),
+      type: 'button',
+      onclick: () => pick(app, layer.locked ? null : layer.id),
+    },
+      h('span', { class: 'row__main', style: { opacity: layer.visible ? '1' : '0.45' } },
+        h('span', { class: 'row__title' }, layer.name),
+        // Only what the name does not already say: "Controls / Controls" is noise.
+        (sub => sub && h('span', { class: 'row__sub' }, sub))(
+          [LAYER_LABELS[layer.type] !== layer.name ? LAYER_LABELS[layer.type] : null,
+            layer.effects.length
+              ? `${layer.effects.length} effect${layer.effects.length > 1 ? 's' : ''}` : null]
+            .filter(Boolean).join(' · ')),
+      ),
+    );
+
+    const visibility = iconButton(
+      layer.visible ? 'eye' : 'eye-slash',
+      layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`,
+      () => {
+        layer.visible = !layer.visible;
+        app.save();
+        buildSheet(app);
+        drawOnce(app);
+      },
+    );
+    const lock = iconButton(
+      layer.locked ? 'lock-simple' : 'lock-simple-open',
+      layer.locked ? `Unlock ${layer.name}` : `Lock ${layer.name}`,
+      () => {
+        layer.locked = !layer.locked;
+        if (layer.locked && app.state.selectedLayerId === layer.id) app.state.selectedLayerId = null;
+        app.save();
+        buildSheet(app);
+        drawOnce(app);
+      },
+    );
+
+    rows.append(h('div', { class: 'row-wrap' }, select, visibility, lock));
+  }
+
+  return section(sectionHead('Layers', String(project.layers.length)), rows);
+}
+
+/**
+ * Slide: what the whole picture is. The background, which pieces are on it,
+ * and the list of layers. Anything belonging to one layer lives on Layer.
+ */
+function slideTab(box, app) {
   const project = app.state.project;
   const photo = project.layers.find(l => l.type === 'photo');
 
@@ -882,53 +955,135 @@ function layersTab(box, app) {
     drawOnce(app);
   }, 'Background');
 
-  const groupNote = footnote('');
   const toggle = (label, checked, onChange) => switchRow(label, checked, on => {
     onChange(on);
     app.save();
     drawOnce(app);
   });
+  const card = project.layers.find(l => l.type === 'card');
+  const colourWindow = project.layers.find(l => l.type === 'window');
+  // A way in to a pane's settings, beside the switch that makes it.
+  const editRow = (label, layer) => h('button', {
+    class: 'row row--link', type: 'button', onclick: () => pick(app, layer.id),
+  }, h('span', { class: 'row__main' }, label), icon('caret-right', { size: 'sm' }));
 
-  // Keyframes for where the selection is, how big, turned and see-through.
-  // They apply to everything that moves with it, so a grouped arrangement
-  // animates as one. First on the tab, because selecting something is
-  // usually the step before animating it.
-  const selected = findLayer(project, app.state.selectedLayerId);
-  if (selected && selected.type !== 'photo' && !selected.locked) {
-    // The selected layer leads, so the strip and ◆ show its keyframes.
-    const members = () => {
-      const all = movesWith(project, selected);
-      return [selected, ...all.filter(layer => layer !== selected)];
-    };
-    const keyRow = (label, keys) => {
-      const track = keyTrack(app, {
-        label,
-        pairs: () => members().flatMap(layer => keys.map(key => [layer.props, key])),
-      });
-      return h('div', { class: 'row key-row' },
-        h('div', { class: 'key-row__head' }, h('span', { class: 'row__main' }, label), track.diamond),
-        track.strip);
-    };
-    box.append(section(sectionHead('Animate', members().length > 1 ? `${selected.name} and group` : selected.name),
+  box.append(
+    section('Background', h('div', { class: 'section', style: { gap: '10px' } }, background, blurBox, swatches,
+      photo.props.mode === 'solid' ? null : h('div', { class: 'group group--pad' }, keyedSlider(app, {
+        label: 'Black and white',
+        holder: photo.props, key: 'mono',
+        min: 0, max: 1, step: 0.01, fallback: 0,
+        format: value => `${Math.round(value * 100)}%`,
+      })))),
+
+    section('On the slide',
       h('div', { class: 'group' },
-        keyRow('Position', ['x', 'y']),
-        keyRow('Size', ['scale']),
-        keyRow('Rotation', ['rotation']),
-        h('div', { class: 'group--pad' }, keyedSlider(app, {
-          label: 'Opacity',
-          pairs: () => members().map(layer => [layer.props, 'opacity']),
-          min: 0, max: 1, step: 0.01, fallback: 1,
-          format: value => `${Math.round(value * 100)}%`,
-        })),
+        toggle('Cover', project.showCover, on => { project.showCover = on; }),
+        switchRow('Glass card', !!card, on => {
+          setCard(project, on);
+          app.save();
+          buildSheet(app);
+          drawOnce(app);
+        }),
+        card ? editRow('Edit glass card', card) : null,
+        colourWindow ? editRow('Edit colour window', colourWindow) : null,
+        toggle('Move together', project.grouped !== false, on => { project.grouped = on; }),
       ),
-      footnote('Tap \u25C6, or tap a strip, to add a keyframe; at another moment move, resize or turn '
-        + 'the layer and another is added. Tap a keyframe to pick it, drag it to retime it, and '
-        + 'press Delete to remove it, or tap the filled \u25C6.'),
-    ));
+      footnote('With Move together on, everything on the photo moves and resizes as one.'),
+    ),
+
+    layerList(app),
+    h('button', {
+      class: 'btn btn--block',
+      type: 'button',
+      onclick: async () => {
+        const name = `${TEMPLATES[project.template].label} ${new Date().toLocaleDateString()}`;
+        await putStyle(toStyle(project, name));
+        toast('Look saved to your styles.');
+      },
+    }, icon('swatches', { size: 'sm' }), 'Save Look as Style'),
+  );
+}
+
+/** A pane's size and shape, and for glass its blur and grain. */
+function paneSections(app, layer) {
+  const p = layer.props;
+  const glass = layer.type === 'card';
+  const slider = (label, key, min, max, step, fallback, format) =>
+    keyedSlider(app, { label, holder: p, key, min, max, step, fallback, format });
+  const percent = value => `${Math.round(value * 100)}%`;
+  return [
+    section('Shape',
+      shapePicker(app, layer),
+      h('div', { class: 'group group--pad' },
+        slider('Width', 'scale', glass ? 0.2 : 0.15, glass ? 1.2 : 1, 0.005, glass ? 0.72 : 0.46, percent),
+        slider('Height', 'ratio', 0.3, 2.5, 0.01, glass ? 1.2 : 1.45, value => `${Math.round(value * 100)}% of width`),
+        // Past a quarter of the width the curve eats into what is on a card.
+        glass
+          ? slider('Roundness', 'radius', 0, 0.25, 0.0025, 0.075, value => `${Math.round(value * 400)}%`)
+          : slider('Roundness', 'radius', 0, 0.5, 0.005, 0.06, value => `${Math.round(value * 200)}%`),
+      )),
+    glass ? section('Glass',
+      h('div', { class: 'group group--pad' },
+        slider('Blur', 'blur', 0, 80, 1, 12, value => String(value)),
+        slider('Frost grain', 'grain', 0, 1, 0.01, 0.5, percent),
+      )) : null,
+  ];
+}
+
+/** Keyframes for where the layer is, its size, angle and opacity. */
+function animateSection(app, selected) {
+  const project = app.state.project;
+  // The selected layer leads, so the strip and \u25C6 show its keyframes.
+  // They apply to everything that moves with it.
+  const members = () => {
+    const all = movesWith(project, selected);
+    return [selected, ...all.filter(layer => layer !== selected)];
+  };
+  const keyRow = (label, keys) => {
+    const track = keyTrack(app, {
+      label,
+      pairs: () => members().flatMap(layer => keys.map(key => [layer.props, key])),
+    });
+    return h('div', { class: 'row key-row' },
+      h('div', { class: 'key-row__head' }, h('span', { class: 'row__main' }, label), track.diamond),
+      track.strip);
+  };
+  return section(sectionHead('Animate', members().length > 1 ? 'with the group' : ''),
+    h('div', { class: 'group' },
+      keyRow('Position', ['x', 'y']),
+      keyRow('Size', ['scale']),
+      keyRow('Rotation', ['rotation']),
+      h('div', { class: 'group--pad' }, keyedSlider(app, {
+        label: 'Opacity',
+        pairs: () => members().map(layer => [layer.props, 'opacity']),
+        min: 0, max: 1, step: 0.01, fallback: 1,
+        format: value => `${Math.round(value * 100)}%`,
+      })),
+    ),
+    footnote('Tap \u25C6 or a strip to add a keyframe. Tap one to pick it, then Delete removes it.'),
+  );
+}
+
+/**
+ * Layer: everything about the one thing selected, in the order it is
+ * usually wanted: what it is, then how it moves, then its effects.
+ */
+function layerTab(box, app) {
+  const project = app.state.project;
+  const selected = findLayer(project, app.state.selectedLayerId);
+  if (!selected || selected.locked || selected.type === 'photo') {
+    box.append(emptyState('Tap something on the slide, or pick it here.'), layerList(app));
+    return;
   }
 
+  box.append(h('div', { class: 'layer-head' },
+    h('button', { class: 'layer-head__back', type: 'button', onclick: () => pick(app, null) },
+      icon('caret-left', { size: 'sm' }), 'All layers'),
+    h('span', { class: 'layer-head__name' }, selected.name)));
+
   // The words: which face, how heavy, and for a line of its own, what it says.
-  if (selected && selected.type === 'text') {
+  if (selected.type === 'text') {
     const p = selected.props;
     const redraw = () => { app.save(); drawOnce(app); };
     const font = segmented(FONT_CHOICES, p.font || 'sans', value => {
@@ -954,183 +1109,15 @@ function layersTab(box, app) {
       )));
   }
 
-  const card = project.layers.find(l => l.type === 'card');
-  const colourWindow = project.layers.find(l => l.type === 'window');
-  box.append(
-    section('Background', h('div', { class: 'section', style: { gap: '10px' } }, background, blurBox, swatches,
-      photo.props.mode === 'solid' ? null : h('div', { class: 'group group--pad' }, keyedSlider(app, {
-        label: 'Black and white',
-        holder: photo.props, key: 'mono',
-        min: 0, max: 1, step: 0.01, fallback: 0,
-        format: value => `${Math.round(value * 100)}%`,
-      })))),
-
-    section('Arrange',
-      h('div', { class: 'group' },
-        toggle('Show cover', project.showCover, on => { project.showCover = on; }),
-        // The frosted pane behind the furniture. Any template can have one.
-        switchRow('Glass card', !!card, on => {
-          setCard(project, on);
-          app.save();
-          buildSheet(app);
-          drawOnce(app);
-        }),
-        toggle('Move together', project.grouped !== false, on => {
-          project.grouped = on;
-          groupNote.textContent = groupText();
-        }),
-      ),
-      groupNote,
-    ),
-
-    card ? section('Glass card',
-      shapePicker(app, card),
-      h('div', { class: 'group group--pad' },
-        // Size and shape apart from what is on it. On the slide, drag the
-        // card to move it alone and drag a corner to reshape it.
-        keyedSlider(app, {
-          label: 'Width',
-          holder: card.props, key: 'scale',
-          min: 0.2, max: 1.2, step: 0.005, fallback: 0.72,
-          format: value => `${Math.round(value * 100)}%`,
-        }),
-        keyedSlider(app, {
-          label: 'Height',
-          holder: card.props, key: 'ratio',
-          min: 0.3, max: 2.5, step: 0.01, fallback: 1.2,
-          format: value => `${Math.round(value * 100)}% of width`,
-        }),
-        keyedSlider(app, {
-          label: 'Corner roundness',
-          holder: card.props, key: 'radius',
-          // Past a quarter of the width the curve starts eating into what is
-          // on the card, so that is where the slider stops.
-          min: 0, max: 0.25, step: 0.0025, fallback: 0.075,
-          format: value => `${Math.round(value * 400)}%`,
-        }),
-        keyedSlider(app, {
-          label: 'Glass blur',
-          holder: card.props, key: 'blur',
-          min: 0, max: 80, step: 1, fallback: 12,
-          format: value => String(value),
-        }),
-      ),
-      footnote('With Move together on, dragging a corner of the card resizes everything. '
-        + 'Turn it off to move the card on its own and drag a corner to change its shape.'),
-    ) : null,
-
-    colourWindow ? section('Colour window',
-      shapePicker(app, colourWindow),
-      h('div', { class: 'group group--pad' },
-        keyedSlider(app, {
-          label: 'Width',
-          holder: colourWindow.props, key: 'scale',
-          min: 0.15, max: 1, step: 0.005, fallback: 0.46,
-          format: value => `${Math.round(value * 100)}%`,
-        }),
-        keyedSlider(app, {
-          label: 'Height',
-          holder: colourWindow.props, key: 'ratio',
-          min: 0.3, max: 2.5, step: 0.01, fallback: 1.45,
-          format: value => `${Math.round(value * 100)}% of width`,
-        }),
-        keyedSlider(app, {
-          label: 'Corner roundness',
-          holder: colourWindow.props, key: 'radius',
-          min: 0, max: 0.5, step: 0.005, fallback: 0.06,
-          format: value => `${Math.round(value * 200)}%`,
-        }),
-      ),
-      footnote('The window shows the photo in full colour, lined up with the same spot behind it. '
-        + 'Turn Black and white down under Background to colour the rest back in.'),
-    ) : null,
-  );
-  // Written into rather than rebuilt, so the switch keeps sliding.
-  const groupText = () => (project.grouped === false
-    ? 'Drag any layer and only that layer moves.'
-    : 'Everything on the photo moves as one, keeping its spacing. Lock a layer to leave it behind.')
-    // Said only where it applies. A finger pinches and twists and needs no
-    // telling; a mouse has to be shown the corners.
-    + (window.matchMedia('(pointer: fine)').matches
-      ? ' Drag a corner to resize, just outside one to turn. Arrow keys nudge, Shift for bigger steps.'
-      : '');
-  groupNote.textContent = groupText();
-
-  // The list, topmost first, which is how it looks on the slide.
-  const rows = h('div', { class: 'group' });
-  for (const layer of [...project.layers].reverse()) {
-    const select = h('button', {
-      class: 'row' + (layer.id === app.state.selectedLayerId ? ' is-selected' : ''),
-      type: 'button',
-      onclick: () => {
-        app.state.selectedLayerId = layer.locked ? null : layer.id;
-        buildSheet(app, true);
-        drawOnce(app);
-      },
-    },
-      h('span', { class: 'row__main', style: { opacity: layer.visible ? '1' : '0.45' } },
-        h('span', { class: 'row__title' }, layer.name),
-        // Only what the name does not already say: "Controls / Controls" is noise.
-        (sub => sub && h('span', { class: 'row__sub' }, sub))(
-          [LAYER_LABELS[layer.type] !== layer.name ? LAYER_LABELS[layer.type] : null,
-            layer.effects.length
-              ? `${layer.effects.length} effect${layer.effects.length > 1 ? 's' : ''}` : null]
-            .filter(Boolean).join(' · ')),
-      ),
-    );
-
-    const visibility = iconButton(
-      layer.visible ? 'eye' : 'eye-slash',
-      layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`,
-      () => {
-        layer.visible = !layer.visible;
-        app.save();
-        buildSheet(app);
-        drawOnce(app);
-      },
-    );
-    const lock = iconButton(
-      layer.locked ? 'lock-simple' : 'lock-simple-open',
-      layer.locked ? `Unlock ${layer.name}` : `Lock ${layer.name}`,
-      () => {
-        layer.locked = !layer.locked;
-        if (layer.locked && app.state.selectedLayerId === layer.id) app.state.selectedLayerId = null;
-        app.save();
-        buildSheet(app);
-        drawOnce(app);
-      },
-    );
-
-    rows.append(h('div', { class: 'row-wrap' }, select, visibility, lock));
-  }
-
-  box.append(
-    section(sectionHead('Layers', String(project.layers.length)), rows),
-    h('button', {
-      class: 'btn btn--block',
-      type: 'button',
-      onclick: async () => {
-        const name = `${TEMPLATES[project.template].label} ${new Date().toLocaleDateString()}`;
-        await putStyle(toStyle(project, name));
-        toast('Look saved to your styles.');
-      },
-    }, icon('swatches', { size: 'sm' }), 'Save Look as Style'),
-  );
+  if (selected.type === 'card' || selected.type === 'window') box.append(...paneSections(app, selected));
+  box.append(animateSection(app, selected));
+  effectsSection(box, app, selected);
 }
 
 // --- Effects ---------------------------------------------------------------
 
-function effectsTab(box, app) {
-  const project = app.state.project;
-  const layer = findLayer(project, app.state.selectedLayerId)
-    || project.layers.find(l => l.type === 'photo');
-
-  box.append(footnote(`Effects on ${layer.name}, applied from the top down.`));
-  box.lastChild.style.padding = '0 4px';
-
-  if (layer.effects.length === 0) {
-    box.append(emptyState('No effects on this layer yet.'));
-  }
+function effectsSection(box, app, layer) {
+  box.append(sectionHead('Effects', layer.effects.length ? 'top down' : ''));
 
   layer.effects.forEach((effect, index) => {
     const spec = EFFECTS[effect.type];
@@ -1187,7 +1174,7 @@ function effectsTab(box, app) {
       },
     }, icon('plus', { size: 'sm' }), spec.label));
   }
-  box.append(section('Add effect', adders));
+  box.append(adders);
 }
 
 // --- Animation -------------------------------------------------------------

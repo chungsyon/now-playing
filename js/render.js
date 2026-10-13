@@ -25,7 +25,7 @@
 
 import { valueAt, turnsPerLoop, formatTime, isKeyed } from './model.js';
 import { EFFECTS, withDefaults } from './effects.js';
-import { coverTones, withAlpha } from './color.js';
+import { coverTones, coverTonesDark, withAlpha } from './color.js';
 
 const ROOM = '#0E0D0C';
 
@@ -293,62 +293,70 @@ export class Stage {
   }
 
   /**
-   * Frosted glass, on a scratch canvas of the same size.
-   *
-   * A plain gaussian smears everything evenly, which reads as a blurred
-   * photo rather than as glass. Frosted glass is a rough surface: each point
-   * of it bends light from somewhere slightly different, so the picture
-   * breaks into a soft speckle, and the scattered light leaves a milky haze.
-   * So: the picture is softened, then every pixel takes its colour from a
-   * random spot nearby (fixed per slide, so nothing shimmers from frame to
-   * frame), which leaves a fine grain, and a faint white veil goes on top.
+   * The browser's own gaussian, on a scratch canvas of the same size.
    *
    * `pixels` is in this stage's pixels, so the caller converts from the
    * stored radius first. Anything smaller than half a pixel is not a blur.
    */
   blurred(source, pixels) {
     if (!(pixels >= 0.5)) return source;
-    // Safari only learned canvas filters in 17. On anything older the layer
-    // is drawn sharp rather than wrong, and nothing else about the slide changes.
+    // Safari only learned this in 17. On anything older the layer is drawn
+    // sharp rather than wrong, and nothing else about the slide changes.
     if (!('filter' in this.layerCtx)) return source;
-    const W = this.width;
-    const H = this.height;
     if (!this.blurCanvas) {
       this.blurCanvas = document.createElement('canvas');
-      this.blurCanvas.width = W;
-      this.blurCanvas.height = H;
+      this.blurCanvas.width = this.width;
+      this.blurCanvas.height = this.height;
       this.blurCtx = this.blurCanvas.getContext('2d');
+    }
+    const c = this.blurCtx;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.filter = 'none';
+    c.clearRect(0, 0, this.width, this.height);
+    c.filter = `blur(${pixels}px)`;
+    c.drawImage(source, 0, 0);
+    c.filter = 'none';
+    return this.blurCanvas;
+  }
+
+  /**
+   * Frosted glass, for the glass card: a plain blur reads as a blurred
+   * photo, not as a pane. Frosted glass is a rough surface: each point of
+   * it bends light from somewhere slightly different, so the picture breaks
+   * into a fine speckle. So: the picture is softened, then every pixel takes
+   * its colour from a random spot nearby (fixed per slide, so nothing
+   * shimmers from frame to frame). `grain` (0 to 1) is how far that reaches:
+   * none is a smooth blur, one is coarse sandblasted glass.
+   *
+   * Works on a picture that fills the slide, which is what is behind a card.
+   */
+  frosted(source, pixels, grain) {
+    const W = this.width;
+    const H = this.height;
+    const soft = this.blurred(source, pixels);
+    if (soft === source || !(grain > 0.001)) return soft;
+    if (!this.frostCanvas) {
       this.frostCanvas = document.createElement('canvas');
       this.frostCanvas.width = W;
       this.frostCanvas.height = H;
       this.frostCtx = this.frostCanvas.getContext('2d', { willReadFrequently: true });
     }
-    const c = this.blurCtx;
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.filter = 'none';
-    c.globalCompositeOperation = 'source-over';
-    c.globalAlpha = 1;
-    c.clearRect(0, 0, W, H);
-
-    // Scatter. A photo that cannot be read back (one from another site)
-    // simply skips it and gets the plain blur.
-    let soft = source;
+    const f = this.frostCtx;
+    // A blur pulls in emptiness from beyond the edge of the slide; the plain
+    // picture underneath keeps the edges solid, or the scatter would turn
+    // them into a speckled fringe.
+    f.clearRect(0, 0, W, H);
+    f.drawImage(source, 0, 0);
+    f.drawImage(soft, 0, 0);
     try {
-      const f = this.frostCtx;
-      f.clearRect(0, 0, W, H);
-      // Most of the softness first, so the speckle is made of colour, not of
-      // the photo's own sharp detail.
-      f.filter = `blur(${pixels * 0.75}px)`;
-      f.drawImage(source, 0, 0);
-      f.filter = 'none';
       const image = f.getImageData(0, 0, W, H);
       const from = new Uint32Array(image.data.buffer.slice(0));
       const to = new Uint32Array(image.data.buffer);
       // ponytail: about 55 ms at 1080 x 1350, paid once while the photo
-      // holds still. A keyframed blur pays it every frame (about 15 fps in
-      // the preview); move this into the WebGL effects pass if that matters.
+      // holds still. A keyframed photo pays it ten times a second; move this
+      // into the WebGL effects pass if that matters.
       const jitter = this.jitter();
-      const reach = pixels * 0.6;
+      const reach = pixels * 0.8 * grain;
       for (let y = 0, i = 0; y < H; y++) {
         for (let x = 0; x < W; x++, i++) {
           let sx = x + ((jitter[i * 2] * reach) / 127 | 0);
@@ -359,23 +367,10 @@ export class Stage {
         }
       }
       f.putImageData(image, 0, 0);
-      soft = this.frostCanvas;
-    } catch { /* unreadable: plain blur below */ }
-
-    // The speckle is the grain of the glass, so it is left as it is: even a
-    // pixel or two of blur on top smooths it straight back into a photo.
-    if (soft === source) c.filter = `blur(${pixels}px)`;
-    c.drawImage(soft, 0, 0);
-    c.filter = 'none';
-
-    // The milky haze of scattered light, only where there is something.
-    c.globalCompositeOperation = 'source-atop';
-    c.globalAlpha = Math.min(0.12, (pixels / W) * 2.5);
-    c.fillStyle = '#FFFFFF';
-    c.fillRect(0, 0, W, H);
-    c.globalAlpha = 1;
-    c.globalCompositeOperation = 'source-over';
-    return this.blurCanvas;
+    } catch {
+      return soft; // a photo the browser will not let us read: smooth glass
+    }
+    return this.frostCanvas;
   }
 
   /**
@@ -826,8 +821,52 @@ const OLD_DEFAULTS = { '#F3EFE9': 'ink', '#A8A097': 'ink' };
 
 // The artist is the title's own colour, a touch quieter, rather than the
 // cover's soft tone, which sank into busy photos.
-function textColour(p, project) {
-  const tones = coverTones(project.palette);
+/**
+ * The tones for words and buttons, chosen by what is actually behind them.
+ *
+ * Pale words vanish on a bright sky and dark ones on a night, so before a
+ * layer is drawn the slide under it is measured, and over anything bright
+ * it is drawn in the dark set instead. The measurement is kept until the
+ * layer moves or anything under it changes.
+ */
+function tonesFor(stage, layer, project, t) {
+  const p = layer.props;
+  const below = project.layers.slice(0, project.layers.indexOf(layer));
+  const key = JSON.stringify([
+    Math.round(valueAt(p.x, t) * 200), Math.round(valueAt(p.y, t) * 200),
+    Math.round(valueAt(p.scale, t) * 200), stage.width, stage.mediaKey(),
+    below.map(l => [l.visible, l.props, l.effects]), project.palette,
+    // A moving photo changes what is behind; checked ten times a second.
+    below.some(l => !holdsStill(l)) ? Math.round(t * 10) : 0,
+  ]);
+  if (!stage.contrast) stage.contrast = new Map();
+  let light = stage.contrast.get(layer.id + key);
+  if (light === undefined) {
+    // The patch the layer covers, squeezed to a few pixels and averaged.
+    const W = stage.width;
+    const scale = valueAt(p.scale, t);
+    const size = layer.type === 'text' ? W * valueAt(p.size, t) * scale : W * scale * 0.1;
+    const reach = layer.type === 'text' ? Math.min(W * (p.maxWidth || 0.5) * scale, size * 6) : W * scale;
+    const cx = valueAt(p.x, t) * W + (p.align === 'left' ? reach / 2 : p.align === 'right' ? -reach / 2 : 0);
+    const cy = valueAt(p.y, t) * stage.height;
+    if (!stage.probe) {
+      stage.probe = document.createElement('canvas');
+      stage.probe.width = 8;
+      stage.probe.height = 4;
+    }
+    const probe = stage.probe.getContext('2d', { willReadFrequently: true });
+    probe.drawImage(stage.canvas, cx - reach / 2, cy - size, reach, size * 2, 0, 0, 8, 4);
+    const d = probe.getImageData(0, 0, 8, 4).data;
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) sum += (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+    light = sum / (d.length / 4) > 0.58;
+    if (stage.contrast.size > 200) stage.contrast.clear();
+    stage.contrast.set(layer.id + key, light);
+  }
+  return light ? coverTonesDark(project.palette) : coverTones(project.palette);
+}
+
+function textColour(p, tones) {
   const auto = !p.color || OLD_DEFAULTS[p.color];
   if (!auto) return p.color;
   // A line can take the cover's accent instead, warm on a warm cover.
@@ -844,6 +883,7 @@ function drawText(ctx, layer, project, t, stage) {
   let value = textFor(layer, project);
   if (p.uppercase) value = value.toUpperCase();
   if (!value) return;
+  const tones = tonesFor(stage, layer, project, t);
 
   placed(ctx, layer, t, stage, (c, scale) => {
     let size = stage.width * valueAt(p.size, t) * scale;
@@ -861,7 +901,7 @@ function drawText(ctx, layer, project, t, stage) {
     }
     c.textAlign = 'left';
     c.textBaseline = 'middle';
-    c.fillStyle = textColour(p, project);
+    c.fillStyle = textColour(p, tones);
     drawTracked(c, value, p.tracking || 0, p.align || 'center', size);
   });
 }
@@ -877,7 +917,7 @@ function positionAt(project, layer, t) {
 function drawProgressBar(ctx, layer, project, t, stage) {
   const p = layer.props;
   const trackSeconds = (project.song.durationMs || 0) / 1000;
-  const tones = coverTones(project.palette);
+  const tones = tonesFor(stage, layer, project, t);
 
   placed(ctx, layer, t, stage, (c, scale) => {
     const width = stage.width * scale;
@@ -948,7 +988,7 @@ function drawProgressBar(ctx, layer, project, t, stage) {
 // --- transport icons (decorative) ------------------------------------------
 
 function drawControls(ctx, layer, project, t, stage) {
-  const ink = withAlpha(coverTones(project.palette).ink, 0.9);
+  const ink = withAlpha(tonesFor(stage, layer, project, t).ink, 0.9);
   placed(ctx, layer, t, stage, (c, scale) => {
     const width = stage.width * scale;
     const unit = width * 0.13;
@@ -1052,7 +1092,7 @@ function roundedRect(c, x, y, w, h, r, fresh = true) {
  * sits straight above it, as the Player template puts it. A layer slipped in
  * between would freeze into the glass until the photo next changed.
  */
-function glassBehind(stage, project, t, pixels) {
+function glassBehind(stage, project, t, pixels, grain) {
   const photo = project.layers.find(l => l.type === 'photo');
   const key = JSON.stringify([
     photo && [photo.visible, photo.props, photo.effects],
@@ -1062,6 +1102,7 @@ function glassBehind(stage, project, t, pixels) {
     // not show; every frame if they ever do.
     photo && !holdsStill(photo) ? Math.round(t * 10) : 0,
     Math.round(pixels * 2),
+    Math.round(grain * 100),
   ]);
   if (stage.glassKey === key) return stage.glass;
 
@@ -1074,7 +1115,7 @@ function glassBehind(stage, project, t, pixels) {
   // Safari before 17 has no canvas filter: the glass is then simply clear.
   const g = stage.glass.getContext('2d');
   g.filter = 'saturate(1.5) brightness(1.06)';
-  g.drawImage(stage.blurred(stage.canvas, pixels), 0, 0);
+  g.drawImage(stage.frosted(stage.canvas, pixels, grain), 0, 0);
   g.filter = 'none';
   try {
     stage.glassPixels = g.getImageData(0, 0, stage.width, stage.height).data;
@@ -1228,7 +1269,7 @@ function drawCard(ctx, layer, project, t, stage) {
   // Blur is per 1000 pixels of slide width, like the Blur effect, so the
   // preview and the file agree. None at all is perfectly clear glass.
   const pixels = ((valueAt(p.blur, t) ?? 12) * stage.width) / 1000;
-  const glass = glassBehind(stage, project, t, pixels);
+  const glass = glassBehind(stage, project, t, pixels, valueAt(p.grain, t) ?? 0.5);
 
   placed(ctx, layer, t, stage, (c, scale) => {
     const w = stage.width * scale;
@@ -1277,7 +1318,8 @@ function drawCard(ctx, layer, project, t, stage) {
     c.save();
     shape();
     c.clip();
-    c.fillStyle = withAlpha(tones.deep, 0.1);
+    // A touch deeper than glass strictly needs, so pale words on it hold.
+    c.fillStyle = withAlpha(tones.deep, 0.18);
     c.fillRect(-w / 2, -h / 2, w, h);
     c.fillStyle = 'rgba(255, 255, 255, 0.05)';
     c.fillRect(-w / 2, -h / 2, w, h);
