@@ -255,11 +255,11 @@ function buildStage(app, preview) {
   wrap.style.width = `${cssWidth}px`;
   wrap.style.height = `${cssHeight}px`;
 
-  // Cap the working size so a phone is not drawing a 1080px frame sixty times
-  // a second. Everything is stored as a fraction, so this changes nothing but
-  // the sharpness of the preview.
+  // Draw at the screen's own sharpness (3x on an iPhone), never past the
+  // slide's real size. Everything is stored as a fraction, so this changes
+  // nothing but the sharpness of the preview.
   const width = Math.min(project.aspect.w,
-    Math.round(cssWidth * Math.min(2, window.devicePixelRatio || 1)));
+    Math.round(cssWidth * Math.min(3, window.devicePixelRatio || 1)));
   const height = Math.round(width * ratio);
 
   // Within a few pixels, keep what is already there. The slide is drawn from
@@ -693,16 +693,25 @@ function drawGuides(app, t) {
     ctx.stroke();
   }
   if (on.rotation) {
-    // The angle it landed on, written beside the layer.
-    const size = Math.max(11, stage.width * 0.035);
-    ctx.font = `600 ${size}px system-ui, -apple-system, sans-serif`;
-    ctx.fillStyle = '#FFD60A';
+    // The angle it landed on, in a small dark capsule like iOS's own
+    // readouts: a fixed size on screen, whatever the slide's resolution.
+    const px = stage.width / (overlay.clientWidth || stage.width);
+    const size = 13 * px;
+    const label = `${Math.round(valueAt(layer.props.rotation, t))}\u00B0`;
+    ctx.font = `600 ${size}px -apple-system, BlinkMacSystemFont, system-ui, sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(
-      `${Math.round(valueAt(layer.props.rotation, t))}\u00B0`,
-      valueAt(layer.props.x, t) * stage.width,
-      valueAt(layer.props.y, t) * stage.height - size,
-    );
+    ctx.textBaseline = 'middle';
+    const pillW = ctx.measureText(label).width + 20 * px;
+    const pillH = 26 * px;
+    const x = valueAt(layer.props.x, t) * stage.width;
+    const y = valueAt(layer.props.y, t) * stage.height;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x - pillW / 2, y - pillH / 2, pillW, pillH, pillH / 2);
+    else ctx.rect(x - pillW / 2, y - pillH / 2, pillW, pillH);
+    ctx.fillStyle = 'rgba(28, 28, 30, 0.82)';
+    ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(label, x, y + 0.5 * px);
   }
   ctx.restore();
 }

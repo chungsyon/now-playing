@@ -445,6 +445,9 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.16.1** - The editor preview draws at the screen's full sharpness (3x on
+  an iPhone, was 2x), so text on the slide is crisp. The angle shown while
+  turning a layer sits in a small dark capsule in the system font.
 - **0.16.0** - Liquid Glass. The card is now a clear pane whose rounded rim
   works like a lens: every pixel of the rim is bent by Snell's law through a
   squircle-shaped edge, red, green and blue bend by slightly different
