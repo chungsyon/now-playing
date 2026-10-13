@@ -1009,6 +1009,10 @@ function slideTab(box, app) {
 function paneSections(app, layer) {
   const p = layer.props;
   const glass = layer.type === 'card';
+  const art = layer.type === 'artPanel';
+  // The colour window measures its roundness against its shorter side; the
+  // card and the art panel against their width.
+  const widthBased = glass || art;
   const slider = (label, key, min, max, step, fallback, format) =>
     keyedSlider(app, { label, holder: p, key, min, max, step, fallback, format });
   const percent = value => `${Math.round(value * 100)}%`;
@@ -1016,17 +1020,22 @@ function paneSections(app, layer) {
     section('Shape',
       shapePicker(app, layer),
       h('div', { class: 'group group--pad' },
-        slider('Width', 'scale', glass ? 0.2 : 0.15, glass ? 1.2 : 1, 0.005, glass ? 0.72 : 0.46, percent),
-        slider('Height', 'ratio', 0.3, 2.5, 0.01, glass ? 1.2 : 1.45, value => `${Math.round(value * 100)}% of width`),
+        slider('Width', 'scale', 0.15, 1.2, 0.005, { card: 0.72, window: 0.46, artPanel: 0.86 }[layer.type], percent),
+        slider('Height', 'ratio', 0.2, 2.5, 0.01, { card: 1.2, window: 1.45, artPanel: 0.5 }[layer.type],
+          value => `${Math.round(value * 100)}% of width`),
         // Past a quarter of the width the curve eats into what is on a card.
-        glass
-          ? slider('Roundness', 'radius', 0, 0.25, 0.0025, 0.075, value => `${Math.round(value * 400)}%`)
+        widthBased
+          ? slider('Roundness', 'radius', 0, 0.25, 0.0025, art ? 0.09 : 0.075, value => `${Math.round(value * 400)}%`)
           : slider('Roundness', 'radius', 0, 0.5, 0.005, 0.06, value => `${Math.round(value * 200)}%`),
       )),
     glass ? section('Glass',
       h('div', { class: 'group group--pad' },
         slider('Blur', 'blur', 0, 80, 1, 12, value => String(value)),
         slider('Frost grain', 'grain', 0, 1, 0.01, 0.5, percent),
+      )) : null,
+    art ? section('Cover',
+      h('div', { class: 'group group--pad' },
+        slider('Darken', 'dim', 0, 0.8, 0.01, 0.35, percent),
       )) : null,
   ];
 }
@@ -1109,7 +1118,9 @@ function layerTab(box, app) {
       )));
   }
 
-  if (selected.type === 'card' || selected.type === 'window') box.append(...paneSections(app, selected));
+  if (selected.type === 'card' || selected.type === 'window' || selected.type === 'artPanel') {
+    box.append(...paneSections(app, selected));
+  }
   box.append(animateSection(app, selected));
   effectsSection(box, app, selected);
 }

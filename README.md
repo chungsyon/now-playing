@@ -445,6 +445,12 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.21.0** - A Media template, after Android's media card: a wide panel
+  made of the cover itself (darkened toward the words, with a Darken
+  slider), the song set left in Figtree, a thick pill progress bar with
+  two-digit times, and shuffle, previous, pause and next. The progress bar
+  and the controls each gained that style, and the art panel is a new
+  layer that reshapes like the glass card.
 - **0.20.2** - Times sized like a music app's: 4.5% of the bar in the slide's
   own face, regular weight (monospace stays at 3.6%). Replaces 0.20.1's
   floor, which made them too large.

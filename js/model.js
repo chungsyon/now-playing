@@ -183,6 +183,7 @@ export const LAYER_LABELS = {
   controls: 'Controls',
   card: 'Card',
   window: 'Window',
+  artPanel: 'Art panel',
 };
 
 // ---------------------------------------------------------------------------
@@ -301,6 +302,28 @@ export const TEMPLATES = {
         }),
         makeLayer('progressBar', 'Progress', { x: 0.5, y: at(0.37), scale: 0.5, speed: 1, showTimes: true }),
         makeLayer('controls', 'Controls', { x: 0.5, y: at(0.47), scale: 0.24 }),
+      ];
+    },
+  },
+
+  media: {
+    id: 'media',
+    label: 'Media',
+    description: 'A wide panel made of the cover, with the song and its controls on it, like a phone\'s media card.',
+    fitsAnyShape: true,
+    build(aspect = ASPECTS[1]) {
+      const at = offset => 0.5 + offset * (aspect.w / aspect.h);
+      const left = { font: 'clean', align: 'left', x: 0.14, maxWidth: 0.55 };
+      return [
+        makeLayer('photo', 'Photo', { mode: 'photo' }, { locked: true }),
+        makeLayer('artPanel', 'Art panel', { x: 0.5, y: at(0), scale: 0.86, ratio: 0.5, radius: 0.09, dim: 0.35 }),
+        makeLayer('text', 'Label', { ...left, bind: null, text: 'Phone speaker', y: at(-0.15), size: 0.026, weight: 500 }),
+        makeLayer('text', 'Title', { ...left, bind: 'title', y: at(-0.087), size: 0.056, weight: 600, tracking: -0.01 }),
+        makeLayer('text', 'Artist', { ...left, bind: 'artist', y: at(-0.037), size: 0.032, weight: 400 }),
+        makeLayer('progressBar', 'Progress', {
+          x: 0.5, y: at(0.035), scale: 0.72, speed: 1, showTimes: true, style: 'pill', font: 'clean',
+        }),
+        makeLayer('controls', 'Controls', { x: 0.5, y: at(0.15), scale: 0.62, style: 'media' }),
       ];
     },
   },

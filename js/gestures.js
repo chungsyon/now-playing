@@ -20,6 +20,10 @@
 
 import { valueAt, movesWith, setValueAt, makeLayer, isKeyed } from './model.js';
 
+// Panels with a free shape: a corner reshapes them, and a selected one keeps
+// hold of any touch inside it.
+const PANES = new Set(['card', 'window', 'artPanel']);
+
 // --- Snapping ---------------------------------------------------------------
 // Lining a thing up by thumb is guesswork, so the last little bit is done for
 // you: come close to the middle and it takes the middle exactly, tilt near a
@@ -199,8 +203,9 @@ export function layerBounds(layer, project, stage, t = 0) {
       break;
     case 'card':
     case 'window':
+    case 'artPanel':
       w = stage.width * scale;
-      h = w * (valueAt(p.ratio, t) || (layer.type === 'card' ? 1.2 : 1.6));
+      h = w * (valueAt(p.ratio, t) || { card: 1.2, window: 1.6, artPanel: 0.5 }[layer.type]);
       break;
     default:
       w = stage.width * scale;
@@ -472,7 +477,7 @@ export function attachGestures(element, api) {
       // its shape is whatever you drag it to. Moving together, the corner
       // resizes the whole arrangement like any other layer's does.
       mode: grabbed === 'scale' && base.members.length === 1
-        && (layer.type === 'card' || layer.type === 'window') ? 'stretch' : grabbed,
+        && PANES.has(layer.type) ? 'stretch' : grabbed,
       midX: only.x,
       midY: only.y,
       grabRadius: Math.hypot(only.x - px, only.y - py),
@@ -536,7 +541,7 @@ export function attachGestures(element, api) {
       // everything else, so otherwise almost every touch on it would land on
       // the cover or the words instead.
       const held = selectedLayer();
-      const keepCard = !grabbed && held && (held.type === 'card' || held.type === 'window')
+      const keepCard = !grabbed && held && PANES.has(held.type)
         && inside(layerBounds(held, api.getProject(), api.getStage(), now()), point.x, point.y);
       if (!grabbed && !keepCard) {
         const hit = layerAt(api.getProject(), api.getStage(), point.x, point.y, now());

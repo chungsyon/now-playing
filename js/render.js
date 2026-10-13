@@ -532,6 +532,7 @@ function drawLayer(ctx, layer, project, t, stage) {
     case 'controls': return drawControls(ctx, layer, project, t, stage);
     case 'card': return drawCard(ctx, layer, project, t, stage);
     case 'window': return drawWindow(ctx, layer, project, t, stage);
+    case 'artPanel': return drawArtPanel(ctx, layer, project, t, stage);
     default: return undefined;
   }
 }
@@ -594,6 +595,49 @@ function paintPhoto(ctx, layer, t, stage, image) {
   ctx.rotate((valueAt(p.rotation, t) * Math.PI) / 180);
   ctx.drawImage(image, -w / 2, -h / 2, w, h);
   ctx.restore();
+}
+
+// --- art panel -----------------------------------------------------------------
+
+/**
+ * A panel made of the cover itself, cropped to fill it, as Android's media
+ * card is: darkened toward its left where the words sit, so they read.
+ */
+function drawArtPanel(ctx, layer, project, t, stage) {
+  const p = layer.props;
+  const image = stage.media.cover;
+  placed(ctx, layer, t, stage, (c, scale) => {
+    const w = stage.width * scale;
+    const h = w * (valueAt(p.ratio, t) || 0.5);
+    if (!(w >= 2 && h >= 2)) return;
+    const radii = cornerRadii(p, t, w, h, valueAt(p.radius, t) ?? 0.09);
+    const shape = () => roundedRect(c, -w / 2, -h / 2, w, h, radii);
+
+    c.save();
+    c.shadowColor = 'rgba(0, 0, 0, 0.35)';
+    c.shadowBlur = w * 0.05;
+    c.shadowOffsetY = w * 0.015;
+    shape();
+    c.fillStyle = project.palette[1] || '#1F2430';
+    c.fill();
+    c.restore();
+
+    c.save();
+    shape();
+    c.clip();
+    if (image) {
+      // Cover-fit: the art fills the panel, cropped about its middle.
+      const fit = Math.max(w / image.width, h / image.height);
+      c.drawImage(image, -image.width * fit / 2, -image.height * fit / 2, image.width * fit, image.height * fit);
+    }
+    const dim = valueAt(p.dim, t) ?? 0.35;
+    const shade = c.createLinearGradient(-w / 2, 0, w / 2, 0);
+    shade.addColorStop(0, `rgba(0, 0, 0, ${Math.min(1, dim * 1.4)})`);
+    shade.addColorStop(1, `rgba(0, 0, 0, ${dim * 0.6})`);
+    c.fillStyle = shade;
+    c.fillRect(-w / 2, -h / 2, w, h);
+    c.restore();
+  });
 }
 
 // --- colour window -----------------------------------------------------------
@@ -956,13 +1000,19 @@ function drawProgressBar(ctx, layer, project, t, stage) {
     // Both go with the bar's own length, so the numbers shrink and grow with
     // it. Monospace digits are wide, so they run a little smaller than the
     // slide's own face does: 4.5% of the bar, as music apps set them.
-    const thickness = Math.max(2, width * 0.0075);
+    // The pill style is a thick bar, as on Android's media card.
+    const pill = p.style === 'pill';
+    const thickness = pill ? width * 0.032 : Math.max(2, width * 0.0075);
     const timeSize = width * (p.font ? 0.045 : 0.036);
+    // Android writes the minutes with two digits and the length as it is;
+    // Apple counts down what is left.
+    const clock = seconds => (pill ? formatTime(seconds).padStart(5, '0') : formatTime(seconds));
+    const timesAt = pill ? thickness / 2 + timeSize * 1.3 : timeSize * 1.9;
 
     // The line itself is always fully there.
     c.lineCap = 'round';
     c.lineWidth = thickness;
-    c.strokeStyle = withAlpha(tones.ink, 0.24);
+    c.strokeStyle = withAlpha(tones.ink, pill ? 0.3 : 0.24);
     c.beginPath();
     c.moveTo(-half, 0);
     c.lineTo(half, 0);
@@ -987,7 +1037,7 @@ function drawProgressBar(ctx, layer, project, t, stage) {
       const x = -half + width * fraction;
 
       c.globalAlpha = state.alpha;
-      c.strokeStyle = tones.accent;
+      c.strokeStyle = pill ? withAlpha(tones.ink, 0.85) : tones.accent;
       c.lineWidth = thickness;
       c.beginPath();
       c.moveTo(-half, 0);
@@ -995,7 +1045,7 @@ function drawProgressBar(ctx, layer, project, t, stage) {
       c.stroke();
 
       c.beginPath();
-      c.arc(x, 0, thickness * 1.9, 0, Math.PI * 2);
+      c.arc(x, 0, pill ? thickness * 0.85 : thickness * 1.9, 0, Math.PI * 2);
       c.fillStyle = tones.ink;
       c.fill();
 
@@ -1005,12 +1055,13 @@ function drawProgressBar(ctx, layer, project, t, stage) {
         c.textBaseline = 'middle';
         c.fillStyle = withAlpha(tones.soft, 0.85);
         c.textAlign = 'left';
-        c.fillText(formatTime(state.at), -half, timeSize * 1.9);
+        c.fillText(clock(state.at), -half, timesAt);
         c.textAlign = 'right';
         c.fillText(
-          trackSeconds > 0 ? '-' + formatTime(Math.max(0, trackSeconds - state.at)) : '0:00',
+          pill ? clock(trackSeconds)
+            : trackSeconds > 0 ? '-' + formatTime(Math.max(0, trackSeconds - state.at)) : '0:00',
           half,
-          timeSize * 1.9,
+          timesAt,
         );
       }
       c.globalAlpha = 1;
@@ -1044,6 +1095,46 @@ function drawControls(ctx, layer, project, t, stage) {
       triangle(cx - unit * 0.3 * dir, dir, unit * 0.75);
       triangle(cx + unit * 0.3 * dir, dir, unit * 0.75);
     };
+
+    // Android's row: shuffle, previous, pause, next, evenly spread, with
+    // single arrows against a bar.
+    if (layer.props.style === 'media') {
+      const step = width / 4;
+      const u = unit * 0.68;
+      // |< and >|: the arrow points at a bar on its far side.
+      const skip = (cx, dir) => {
+        triangle(cx - u * 0.1 * dir, dir, u * 0.8);
+        const bar = Math.max(1.5, u * 0.14);
+        c.fillRect(cx + dir * u * 0.38 - bar / 2, -u * 0.46, bar, u * 0.92);
+      };
+      // Shuffle: two lines that cross, each ending in an arrowhead.
+      c.save();
+      c.translate(-step * 1.5, 0);
+      c.lineCap = 'round';
+      for (const flip of [1, -1]) {
+        c.beginPath();
+        c.moveTo(-u * 0.55, -u * 0.36 * flip);
+        c.lineTo(-u * 0.2, -u * 0.36 * flip);
+        c.lineTo(u * 0.2, u * 0.36 * flip);
+        c.lineTo(u * 0.55, u * 0.36 * flip);
+        c.stroke();
+        c.beginPath();
+        c.moveTo(u * 0.38, u * 0.36 * flip - u * 0.17);
+        c.lineTo(u * 0.55, u * 0.36 * flip);
+        c.lineTo(u * 0.38, u * 0.36 * flip + u * 0.17);
+        c.stroke();
+      }
+      c.restore();
+      skip(-step * 0.5, -1);
+      const barW = u * 0.3;
+      const barH = u * 1.05;
+      for (const side of [-1, 1]) {
+        roundedRect(c, step * 0.5 + side * u * 0.24 - barW / 2, -barH / 2, barW, barH, barW * 0.3);
+        c.fill();
+      }
+      skip(step * 1.5, 1);
+      return;
+    }
 
     double(-gap, -1);
 
