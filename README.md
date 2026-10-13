@@ -445,6 +445,8 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.20.1** - The times under a short bar (the Bookmark's) are as large as
+  the Player's instead of half that.
 - **0.20.0** - Bookmark's heading is two lines again: "Now playing", and the
   album name in bold capitals under it. A text layer can show the album
   (no album, no line), and typing a song in by hand has an Album field.

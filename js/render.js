@@ -953,10 +953,11 @@ function drawProgressBar(ctx, layer, project, t, stage) {
   placed(ctx, layer, t, stage, (c, scale) => {
     const width = stage.width * scale;
     const half = width / 2;
-    // Both go with the bar's own length, so the numbers shrink and grow with
-    // it rather than staying one size while the bar is pinched smaller.
+    // Both go with the bar's own length, so the numbers grow with it. They
+    // never drop below the size the Player's bar gives them, though: on a
+    // short bar, like the Bookmark's, they would be too small to read.
     const thickness = Math.max(2, width * 0.0075);
-    const timeSize = width * 0.036;
+    const timeSize = Math.max(width * 0.036, stage.width * 0.021);
 
     // The line itself is always fully there.
     c.lineCap = 'round';
