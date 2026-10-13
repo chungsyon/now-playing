@@ -780,8 +780,6 @@ function drawText(ctx, layer, project, t, stage) {
     c.textAlign = 'left';
     c.textBaseline = 'middle';
     c.fillStyle = textColour(p, project);
-    c.shadowColor = 'rgba(8, 5, 3, 0.55)';
-    c.shadowBlur = size * 0.5;
     drawTracked(c, value, p.tracking || 0, p.align || 'center', size);
   });
 }

@@ -445,6 +445,7 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.17.2** - Text on the slide has no drop shadow: clean, flat lettering.
 - **0.17.1** - With Move together on, a corner of the glass card or the
   colour window resizes the whole arrangement. Off, it reshapes just that
   one, as before.
