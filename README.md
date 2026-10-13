@@ -445,6 +445,11 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.16.2** - With Move together on, the glass card moves with everything
+  on it, whichever layer you hold. The artist line is semibold, slightly
+  larger, and in the title's own colour, so it no longer sinks into the
+  photo. The player controls are back, pause and forward (« ‖ »), as in
+  Apple Music.
 - **0.16.1** - The editor preview draws at the screen's full sharpness (3x on
   an iPhone, was 2x), so text on the slide is crisp. The angle shown while
   turning a layer sits in a small dark capsule in the system font.

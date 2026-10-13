@@ -908,8 +908,8 @@ function layersTab(box, app) {
           format: value => String(value),
         }),
       ),
-      footnote('On the slide, drag the card to move it on its own, and drag one of its '
-        + 'corners to change its shape.'),
+      footnote('On the slide, drag one of the card\'s corners to change its shape. With '
+        + 'Move together off, dragging the card moves it on its own.'),
     ) : null,
   );
   // Written into rather than rebuilt, so the switch keeps sliding.

@@ -233,7 +233,7 @@ export const TEMPLATES = {
           font: 'serif', align: 'center', tracking: 0,
         }),
         makeLayer('text', 'Artist', {
-          bind: 'artist', x: 0.5, y: 0.928, size: 0.026,
+          bind: 'artist', x: 0.5, y: 0.928, size: 0.03,
           font: 'sans', align: 'center', tracking: 0.16, uppercase: true,
         }),
       ];
@@ -267,7 +267,7 @@ export const TEMPLATES = {
           font: 'serif', align: 'center', tracking: 0,
         }),
         makeLayer('text', 'Artist', {
-          bind: 'artist', x: 0.5, y: at(0.17 * k), size: 0.026, scale: k, maxWidth: 0.66,
+          bind: 'artist', x: 0.5, y: at(0.17 * k), size: 0.03, scale: k, maxWidth: 0.66,
           font: 'sans', align: 'center', tracking: 0.16, uppercase: true,
         }),
         makeLayer('progressBar', 'Progress', {
@@ -336,9 +336,9 @@ export function movesWith(project, layer) {
   // Older drafts have no flag. Grouping is the default, so only an explicit
   // false turns it off.
   const grouped = project.grouped !== false;
-  // The card is the frame, not part of the picture in it: taking hold of the
-  // card moves the card alone, while moving the rest still carries it.
-  if (!grouped || layer.type === 'photo' || layer.type === 'card') return [layer];
+  // With Move together on, the card travels with everything on it, whichever
+  // of them is held. Off, each moves alone.
+  if (!grouped || layer.type === 'photo') return [layer];
   // The layer itself always belongs, even hidden: what is done to the
   // selection must reach the selection.
   return project.layers.filter(

@@ -653,13 +653,19 @@ function drawTracked(ctx, text, tracking, align, emSize) {
 
 // The colours the templates used to write in by hand. A layer that still has
 // one of them was never given a colour on purpose, so it takes the cover's.
-const OLD_DEFAULTS = { '#F3EFE9': 'ink', '#A8A097': 'soft' };
+const OLD_DEFAULTS = { '#F3EFE9': 'ink', '#A8A097': 'ink' };
 
+// The artist is the title's own colour, a touch quieter, rather than the
+// cover's soft tone, which sank into busy photos.
 function textColour(p, project) {
   const tones = coverTones(project.palette);
-  if (!p.color) return p.bind === 'artist' ? tones.soft : tones.ink;
-  return OLD_DEFAULTS[p.color] ? tones[OLD_DEFAULTS[p.color]] : p.color;
+  const auto = !p.color || OLD_DEFAULTS[p.color];
+  if (!auto) return p.color;
+  return p.bind === 'artist' ? withAlpha(tones.ink, 0.85) : tones.ink;
 }
+
+// The artist line is small, so it is set semibold to hold its own.
+const weightOf = p => (p.bind === 'artist' ? '600 ' : '');
 
 function drawText(ctx, layer, project, t, stage) {
   const p = layer.props;
@@ -669,7 +675,7 @@ function drawText(ctx, layer, project, t, stage) {
 
   placed(ctx, layer, t, stage, (c, scale) => {
     let size = stage.width * valueAt(p.size, t) * scale;
-    c.font = `${size}px ${FONTS[p.font] || FONTS.sans}`;
+    c.font = `${weightOf(p)}${size}px ${FONTS[p.font] || FONTS.sans}`;
     // A line with a limit shrinks to fit it, so a long title stays inside
     // the card rather than running off its sides.
     if (p.maxWidth) {
@@ -678,7 +684,7 @@ function drawText(ctx, layer, project, t, stage) {
       const wide = c.measureText(value).width + (p.tracking || 0) * size * Math.max(0, chars.length - 1);
       if (wide > room) {
         size *= room / wide;
-        c.font = `${size}px ${FONTS[p.font] || FONTS.sans}`;
+        c.font = `${weightOf(p)}${size}px ${FONTS[p.font] || FONTS.sans}`;
       }
     }
     c.textAlign = 'left';
@@ -782,28 +788,31 @@ function drawControls(ctx, layer, project, t, stage) {
     c.lineWidth = Math.max(1.5, unit * 0.12);
     c.lineJoin = 'round';
 
-    const triangle = (cx, dir) => {
+    const triangle = (cx, dir, size = unit) => {
       c.beginPath();
-      c.moveTo(cx + (unit / 2) * dir, 0);
-      c.lineTo(cx - (unit / 2) * dir, -unit * 0.58);
-      c.lineTo(cx - (unit / 2) * dir, unit * 0.58);
+      c.moveTo(cx + (size / 2) * dir, 0);
+      c.lineTo(cx - (size / 2) * dir, -size * 0.58);
+      c.lineTo(cx - (size / 2) * dir, size * 0.58);
       c.closePath();
       c.fill();
     };
+    // Back and forward as a pair of arrows each, like Apple Music.
+    const double = (cx, dir) => {
+      triangle(cx - unit * 0.3 * dir, dir, unit * 0.75);
+      triangle(cx + unit * 0.3 * dir, dir, unit * 0.75);
+    };
 
-    // Previous.
-    triangle(-gap - unit * 0.12, -1);
-    c.fillRect(-gap - unit * 0.72, -unit * 0.58, c.lineWidth, unit * 1.16);
+    double(-gap, -1);
 
-    // Play, drawn a little larger than its neighbours.
-    c.save();
-    c.scale(1.35, 1.35);
-    triangle(0, 1);
-    c.restore();
+    // Pause, a little larger than its neighbours: two rounded bars.
+    const barW = unit * 0.3;
+    const barH = unit * 1.05;
+    for (const side of [-1, 1]) {
+      roundedRect(c, side * unit * 0.24 - barW / 2, -barH / 2, barW, barH, barW * 0.3);
+      c.fill();
+    }
 
-    // Next.
-    triangle(gap + unit * 0.12, 1);
-    c.fillRect(gap + unit * 0.72 - c.lineWidth, -unit * 0.58, c.lineWidth, unit * 1.16);
+    double(gap, 1);
   });
 }
 
