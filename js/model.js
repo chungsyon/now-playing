@@ -321,7 +321,11 @@ export const TEMPLATES = {
         }),
         makeLayer('text', 'Label', {
           ...round, bind: null, text: 'Now playing', uppercase: true, maxWidth: 0.3,
-          y: at(-0.345), size: 0.036, weight: 600, tracking: 0.04,
+          y: at(-0.372), size: 0.026, weight: 500, tracking: 0.06,
+        }),
+        makeLayer('text', 'Album', {
+          ...round, bind: 'album', uppercase: true, maxWidth: 0.3,
+          y: at(-0.336), size: 0.03, weight: 700, tracking: 0.08,
         }),
         makeLayer('cover', 'Cover', { x, y: at(-0.17), scale: 0.24, shadow: 0.35, round: true }),
         makeLayer('text', 'Title', {

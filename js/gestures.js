@@ -180,6 +180,7 @@ export function layerBounds(layer, project, stage, t = 0) {
       const size = stage.width * valueAt(p.size, t) * scale;
       const text = p.bind === 'title' ? project.song.title
         : p.bind === 'artist' ? project.song.artist
+        : p.bind === 'album' ? project.song.album
         : p.text || '';
       const chars = Math.max(4, [...(text || 'Untitled')].length);
       w = chars * size * (0.55 + (p.tracking || 0));

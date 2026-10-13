@@ -466,7 +466,7 @@ function layerSignature(layer, project, stage) {
   return JSON.stringify([
     layer.id, layer.props, layer.effects,
     stage.width, stage.height, stage.mediaKey(),
-    project.palette, project.song.title, project.song.artist,
+    project.palette, project.song.title, project.song.artist, project.song.album,
   ]);
 }
 
@@ -796,6 +796,8 @@ function textFor(layer, project) {
   const bind = layer.props.bind;
   if (bind === 'title') return project.song.title || 'Untitled';
   if (bind === 'artist') return project.song.artist || 'Unknown artist';
+  // No album, no line: a song typed in by hand may not have one.
+  if (bind === 'album') return project.song.album || '';
   return layer.props.text || '';
 }
 

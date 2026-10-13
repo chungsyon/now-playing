@@ -445,6 +445,9 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.20.0** - Bookmark's heading is two lines again: "Now playing", and the
+  album name in bold capitals under it. A text layer can show the album
+  (no album, no line), and typing a song in by hand has an Album field.
 - **0.19.5** - A new face, Figtree ("Clean" in the font picker): a friendly
   grotesk close to what streaming apps use. Bookmark is set in it: a bold
   title, a regular artist line, and the times in the same face rather than

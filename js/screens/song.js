@@ -406,6 +406,7 @@ function buildManualForm(box, app) {
 
   const title = h('input', { class: 'input', value: song.title, placeholder: 'Song title' });
   const artist = h('input', { class: 'input', value: song.artist, placeholder: 'Artist' });
+  const album = h('input', { class: 'input', value: song.album || '', placeholder: 'Album (optional)' });
   const minutes = h('input', {
     class: 'input', type: 'number', min: '0', max: '30',
     value: String(Math.floor((song.durationMs || 0) / 60000)),
@@ -429,6 +430,7 @@ function buildManualForm(box, app) {
   box.append(
     h('div', { class: 'field' }, h('label', {}, 'Title'), title),
     h('div', { class: 'field' }, h('label', {}, 'Artist'), artist),
+    h('div', { class: 'field' }, h('label', {}, 'Album'), album),
     h('div', { class: 'field' },
       h('label', {}, 'Length, minutes and seconds'),
       h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center' } },
@@ -449,7 +451,7 @@ function buildManualForm(box, app) {
         song.id = 'manual';
         song.title = title.value.trim();
         song.artist = artist.value.trim();
-        song.album = '';
+        song.album = album.value.trim();
         song.year = '';
         song.version = '';
         song.durationMs = (Number(minutes.value) * 60 + Number(seconds.value)) * 1000;
