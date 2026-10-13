@@ -320,8 +320,8 @@ export const TEMPLATES = {
           x, y: at(-0.04), scale: 0.4, ratio: 1.95, radius: 0.09, corners: 'bookmark', blur: 30,
         }),
         makeLayer('text', 'Label', {
-          ...round, bind: null, text: 'Playing now', uppercase: true, maxWidth: 0.33,
-          y: at(-0.345), size: 0.03, weight: 600, tracking: 0.12,
+          ...round, bind: null, text: 'Now playing', uppercase: true, maxWidth: 0.34,
+          y: at(-0.345), size: 0.038, weight: 600, tracking: 0.1,
         }),
         makeLayer('cover', 'Cover', { x, y: at(-0.17), scale: 0.24, shadow: 0.35, round: true }),
         makeLayer('text', 'Title', {

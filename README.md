@@ -445,6 +445,7 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.19.1** - Bookmark's heading reads "Now playing", larger.
 - **0.19.0** - Words, the bar and the buttons pick their colour from what is
   behind them: the slide under each is measured, and over anything bright
   they turn dark in the cover's own hue. The glass card is a touch deeper
