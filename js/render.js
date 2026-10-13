@@ -33,7 +33,18 @@ const FONTS = {
   serif: '"Instrument Serif", Georgia, "Times New Roman", serif',
   sans: '"DM Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif',
   mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+  elegant: '"Cormorant Garamond", Georgia, "Times New Roman", serif',
+  geometric: 'Montserrat, -apple-system, BlinkMacSystemFont, system-ui, sans-serif',
 };
+
+/** The faces a text layer can be set in, in the order the editor offers them. */
+export const FONT_CHOICES = [
+  { value: 'serif', label: 'Serif' },
+  { value: 'elegant', label: 'Elegant' },
+  { value: 'sans', label: 'Sans' },
+  { value: 'geometric', label: 'Round' },
+  { value: 'mono', label: 'Mono' },
+];
 
 // ===========================================================================
 // WebGL: running a layer through its effects
@@ -366,7 +377,7 @@ function holdsStill(layer) {
   if (MOVES_WITH_TIME.has(layer.type)) return false;
   // The card shows the photo through it, which its own signature knows
   // nothing about. glassBehind keeps the expensive part instead.
-  if (layer.type === 'card') return false;
+  if (layer.type === 'card' || layer.type === 'window') return false;
   if (Object.values(layer.props).some(isKeyed)) return false;
   return !(layer.effects || []).some(effect => Object.values(effect.params || {}).some(isKeyed));
 }
@@ -444,6 +455,7 @@ function drawLayer(ctx, layer, project, t, stage) {
     case 'progressBar': return drawProgressBar(ctx, layer, project, t, stage);
     case 'controls': return drawControls(ctx, layer, project, t, stage);
     case 'card': return drawCard(ctx, layer, project, t, stage);
+    case 'window': return drawWindow(ctx, layer, project, t, stage);
     default: return undefined;
   }
 }
@@ -475,8 +487,26 @@ function drawPhoto(ctx, layer, project, t, stage) {
     return;
   }
 
-  // Fill the whole stage, keeping the photo's own shape. A blurred background
-  // is drawn slightly large so the blur has something to pull in at the edges.
+  paintPhoto(ctx, layer, t, stage, image);
+
+  // Black and white, as far as the slider says. A grey laid over with the
+  // 'saturation' blend takes the colour out, in every browser, filter or not.
+  const mono = valueAt(p.mono, t) || 0;
+  if (mono > 0.001) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'saturation';
+    ctx.globalAlpha = Math.min(1, mono);
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, stage.width, stage.height);
+    ctx.restore();
+  }
+}
+
+/** The photo itself, filling the stage and keeping its own shape. */
+function paintPhoto(ctx, layer, t, stage, image) {
+  const p = layer.props;
+  // A blurred background is drawn slightly large so the blur has something
+  // to pull in at the edges.
   const grow = layer.effects.some(e => e.type === 'blur') ? 1.08 : 1;
   const scale = Math.max(stage.width / image.width, stage.height / image.height) * grow
     * valueAt(p.scale, t);
@@ -488,6 +518,50 @@ function drawPhoto(ctx, layer, project, t, stage) {
   ctx.rotate((valueAt(p.rotation, t) * Math.PI) / 180);
   ctx.drawImage(image, -w / 2, -h / 2, w, h);
   ctx.restore();
+}
+
+// --- colour window -----------------------------------------------------------
+
+/**
+ * A window onto the photo as it really is: sharp and in full colour, lined
+ * up exactly with the same spot of the black and white (or blurred) photo
+ * around it, in a thin light frame.
+ */
+function drawWindow(ctx, layer, project, t, stage) {
+  const p = layer.props;
+  const photo = project.layers.find(l => l.type === 'photo');
+  const image = stage.media.photo;
+  placed(ctx, layer, t, stage, (c, scale) => {
+    const w = stage.width * scale;
+    const h = w * (valueAt(p.ratio, t) || 1.6);
+    const r = Math.min(w, h) * Math.max(0, valueAt(p.radius, t) ?? 0.06);
+    const shape = () => roundedRect(c, -w / 2, -h / 2, w, h, r);
+
+    c.save();
+    c.shadowColor = 'rgba(0, 0, 0, 0.35)';
+    c.shadowBlur = w * 0.06;
+    c.shadowOffsetY = w * 0.02;
+    shape();
+    c.fillStyle = '#1A1817';
+    c.fill();
+    c.restore();
+
+    if (image && photo && photo.props.mode !== 'solid') {
+      c.save();
+      shape();
+      c.clip();
+      const m = c.getTransform();
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      paintPhoto(c, { ...photo, effects: [] }, t, stage, image);
+      c.setTransform(m);
+      c.restore();
+    }
+
+    c.lineWidth = Math.max(1.5, w * 0.008);
+    c.strokeStyle = 'rgba(255, 255, 255, 0.92)';
+    shape();
+    c.stroke();
+  });
 }
 
 // --- record ----------------------------------------------------------------
@@ -605,22 +679,35 @@ function drawCover(ctx, layer, project, t, stage) {
     const size = stage.width * scale;
     const half = size / 2;
 
+    // A round cover is a circle cut from the middle of the square art.
+    const outline = () => {
+      c.beginPath();
+      if (p.round) c.arc(0, 0, half, 0, Math.PI * 2);
+      else c.rect(-half, -half, size, size);
+    };
+
     c.save();
     c.shadowColor = `rgba(10, 6, 3, ${valueAt(p.shadow, t) ?? 0.5})`;
     c.shadowBlur = size * 0.16;
     c.shadowOffsetY = size * 0.035;
     c.fillStyle = project.palette[1] || '#2A2724';
-    c.fillRect(-half, -half, size, size);
+    outline();
+    c.fill();
     c.restore();
 
     // The cover art itself is never blurred, tinted or stretched.
     if (image) {
+      c.save();
+      outline();
+      c.clip();
       c.drawImage(image, -half, -half, size, size);
+      c.restore();
     }
 
     c.strokeStyle = 'rgba(255,240,225,0.10)';
     c.lineWidth = Math.max(1, size * 0.004);
-    c.strokeRect(-half, -half, size, size);
+    outline();
+    c.stroke();
   });
 }
 
@@ -661,11 +748,14 @@ function textColour(p, project) {
   const tones = coverTones(project.palette);
   const auto = !p.color || OLD_DEFAULTS[p.color];
   if (!auto) return p.color;
+  // A line can take the cover's accent instead, warm on a warm cover.
+  if (p.tone === 'accent') return tones.accent;
   return p.bind === 'artist' ? withAlpha(tones.ink, 0.85) : tones.ink;
 }
 
-// The artist line is small, so it is set semibold to hold its own.
-const weightOf = p => (p.bind === 'artist' ? '600 ' : '');
+// The artist line is small, so it is set semibold to hold its own, unless the
+// layer says otherwise.
+const weightOf = p => `${p.weight || (p.bind === 'artist' ? 600 : 400)} `;
 
 function drawText(ctx, layer, project, t, stage) {
   const p = layer.props;
@@ -804,6 +894,16 @@ function drawControls(ctx, layer, project, t, stage) {
 
     double(-gap, -1);
 
+    // Pause can sit in a soft disc, as on the bookmark.
+    if (layer.props.ring) {
+      c.save();
+      c.beginPath();
+      c.arc(0, 0, unit * 0.95, 0, Math.PI * 2);
+      c.fillStyle = 'rgba(255, 255, 255, 0.22)';
+      c.fill();
+      c.restore();
+    }
+
     // Pause, a little larger than its neighbours: two rounded bars.
     const barW = unit * 0.3;
     const barH = unit * 1.05;
@@ -816,19 +916,23 @@ function drawControls(ctx, layer, project, t, stage) {
   });
 }
 
-/** roundRect arrived in Safari 16; older phones get the same shape by hand. */
+/**
+ * roundRect arrived in Safari 16; older phones get the same shape by hand.
+ * `r` is one radius, or four: top left, top right, bottom right, bottom left.
+ */
 function roundedRect(c, x, y, w, h, r, fresh = true) {
   if (fresh) c.beginPath();
-  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  const [tl, tr, br, bl] = (Array.isArray(r) ? r : [r, r, r, r])
+    .map(v => Math.max(0, Math.min(v, w / 2, h / 2)));
   if (c.roundRect) {
-    c.roundRect(x, y, w, h, r);
+    c.roundRect(x, y, w, h, [tl, tr, br, bl]);
     return;
   }
-  c.moveTo(x + r, y);
-  c.arcTo(x + w, y, x + w, y + h, r);
-  c.arcTo(x + w, y + h, x, y + h, r);
-  c.arcTo(x, y + h, x, y, r);
-  c.arcTo(x, y, x + w, y, r);
+  c.moveTo(x + tl, y);
+  c.arcTo(x + w, y, x + w, y + h, tr);
+  c.arcTo(x + w, y + h, x, y + h, br);
+  c.arcTo(x, y + h, x, y, bl);
+  c.arcTo(x, y, x + w, y, tl);
   c.closePath();
 }
 
@@ -888,23 +992,24 @@ function glassBehind(stage, project, t, pixels) {
  * middle bends nothing and is drawn straight. Each point also keeps its
  * outward normal, which the highlight uses.
  */
-function lensFor(stage, w, h, r) {
+function lensFor(stage, w, h, radii) {
   const W = Math.ceil(w);
   const H = Math.ceil(h);
   const bezel = Math.max(4, Math.min(w, h) * 0.11);
-  const key = [W, H, Math.round(r), Math.round(bezel)].join();
+  const key = [W, H, ...radii.map(Math.round), Math.round(bezel)].join();
   if (stage.lens && stage.lens.key === key) return stage.lens;
 
   const sheen = Math.max(1.2, Math.min(w, h) * 0.006);
   const index = [], at = [], nx = [], ny = [], bend = [], line = [], glow = [], cover = [];
-  const hx = w / 2 - r;
-  const hy = h / 2 - r;
   for (let j = 0; j < H; j++) {
     for (let i = 0; i < W; i++) {
       const px = i + 0.5 - w / 2;
       const py = j + 0.5 - h / 2;
-      const qx = Math.abs(px) - hx;
-      const qy = Math.abs(py) - hy;
+      // Each corner keeps its own radius: top left, top right, bottom right,
+      // bottom left, as roundedRect takes them.
+      const r = radii[py < 0 ? (px < 0 ? 0 : 1) : (px < 0 ? 3 : 2)];
+      const qx = Math.abs(px) - (w / 2 - r);
+      const qy = Math.abs(py) - (h / 2 - r);
       // Distance in from the edge of the rounded rectangle, and the way out.
       let d, ox, oy;
       if (qx > 0 && qy > 0) {
@@ -1027,8 +1132,12 @@ function drawCard(ctx, layer, project, t, stage) {
     if (!(w >= 2 && h >= 2)) return;
     // Roundness is a fraction of the card's width; at its most the short
     // sides become full semicircles.
-    const r = Math.min(Math.min(w, h) / 2, w * Math.max(0, valueAt(p.radius, t) ?? 0.075));
-    const shape = () => roundedRect(c, -w / 2, -h / 2, w, h, r);
+    const most = Math.min(w, h) / 2;
+    const r = Math.min(most, w * Math.max(0, valueAt(p.radius, t) ?? 0.075));
+    // A bookmark sweeps one corner, the top right, much rounder than the rest.
+    const big = p.bigCorner ? Math.min(most, w * valueAt(p.bigCorner, t)) : r;
+    const radii = [r, big, r, r];
+    const shape = () => roundedRect(c, -w / 2, -h / 2, w, h, radii);
 
     // A soft shadow under the pane, drawn on its own so it never darkens the
     // glass itself.
@@ -1054,7 +1163,7 @@ function drawCard(ctx, layer, project, t, stage) {
 
     if (stage.glassPixels) {
       // The rim. Redone only when the card, or what is behind it, changes.
-      const lens = lensFor(stage, w, h, r);
+      const lens = lensFor(stage, w, h, radii);
       const drawn = [stage.glassKey, m.a, m.b, m.c, m.d, Math.round(m.e * 4), Math.round(m.f * 4)].join();
       if (lens.drawn !== drawn) {
         paintLens(stage, lens, m);

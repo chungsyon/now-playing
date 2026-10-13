@@ -182,6 +182,7 @@ export const LAYER_LABELS = {
   progressBar: 'Progress',
   controls: 'Controls',
   card: 'Card',
+  window: 'Window',
 };
 
 // ---------------------------------------------------------------------------
@@ -274,6 +275,68 @@ export const TEMPLATES = {
           x: 0.5, y: at(0.235 * k), scale: 0.62 * k, speed: 1, showTimes: true,
         }),
         makeLayer('controls', 'Controls', { x: 0.5, y: at(0.355 * k), scale: 0.27 * k }),
+      ];
+    },
+  },
+
+  window: {
+    id: 'window',
+    label: 'Window',
+    description: 'Your photo in black and white, with one window where it stays in full colour.',
+    fitsAnyShape: true,
+    build(aspect = ASPECTS[1]) {
+      const at = offset => 0.5 + offset * (aspect.w / aspect.h);
+      const white = '#FFFFFF';
+      return [
+        makeLayer('photo', 'Photo', { mode: 'photo', mono: 1 }, { locked: true }),
+        makeLayer('text', 'Title', {
+          bind: 'title', x: 0.5, y: at(-0.47), size: 0.072, maxWidth: 0.8,
+          font: 'elegant', weight: 500, align: 'center', tracking: 0, color: white,
+        }),
+        makeLayer('window', 'Window', { x: 0.5, y: at(-0.08), scale: 0.46, ratio: 1.45, radius: 0.06 }),
+        makeLayer('text', 'Artist', {
+          bind: 'artist', x: 0.5, y: at(0.31), size: 0.03, maxWidth: 0.7,
+          font: 'sans', weight: 400, align: 'center', tracking: 0.02, color: white,
+        }),
+        makeLayer('progressBar', 'Progress', { x: 0.5, y: at(0.385), scale: 0.46, speed: 1, showTimes: true }),
+        makeLayer('controls', 'Controls', { x: 0.5, y: at(0.49), scale: 0.24 }),
+      ];
+    },
+  },
+
+  bookmark: {
+    id: 'bookmark',
+    label: 'Bookmark',
+    description: 'A tall strip of glass down one side, like a bookmark, with a round cover.',
+    fitsAnyShape: true,
+    build(aspect = ASPECTS[1]) {
+      const at = offset => 0.5 + offset * (aspect.w / aspect.h);
+      const x = 0.72;
+      const round = { font: 'geometric', align: 'center', x };
+      return [
+        makeLayer('photo', 'Photo', { mode: 'photo' }, { locked: true }),
+        makeLayer('card', 'Card', {
+          x, y: at(-0.04), scale: 0.4, ratio: 1.95, radius: 0.09, bigCorner: 0.2, blur: 30,
+        }),
+        makeLayer('text', 'Label', {
+          ...round, bind: null, text: 'Playing now', uppercase: true,
+          y: at(-0.37), size: 0.021, weight: 500, tracking: 0.06,
+        }),
+        makeLayer('text', 'Heading', {
+          ...round, bind: 'artist', uppercase: true, maxWidth: 0.33,
+          y: at(-0.338), size: 0.024, weight: 700, tracking: 0.16,
+        }),
+        makeLayer('cover', 'Cover', { x, y: at(-0.17), scale: 0.24, shadow: 0.35, round: true }),
+        makeLayer('text', 'Title', {
+          ...round, bind: 'title', maxWidth: 0.33,
+          y: at(0.0), size: 0.046, weight: 600, tracking: 0, tone: 'accent',
+        }),
+        makeLayer('text', 'Artist', {
+          ...round, bind: 'artist', maxWidth: 0.33,
+          y: at(0.045), size: 0.026, weight: 500, tracking: 0, tone: 'accent',
+        }),
+        makeLayer('progressBar', 'Progress', { x, y: at(0.14), scale: 0.32, speed: 1, showTimes: true }),
+        makeLayer('controls', 'Controls', { x, y: at(0.25), scale: 0.26, ring: true }),
       ];
     },
   },

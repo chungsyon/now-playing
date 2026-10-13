@@ -39,6 +39,20 @@
   font-display: swap;
 }
 @font-face {
+  font-family: 'Cormorant Garamond';
+  src: url('../assets/fonts/cormorant-garamond-var.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Montserrat';
+  src: url('../assets/fonts/montserrat-var.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
   font-family: 'JetBrains Mono';
   src: url('../assets/fonts/jetbrains-mono-var.woff2') format('woff2');
   font-weight: 100 800;
@@ -415,6 +429,23 @@ button.row:active { background: var(--fill-strong); transition: none; }
    A track with a raised thumb that slides to the chosen segment. The thumb
    moves with a transition, which a browser retargets from wherever it is, so
    a second tap mid-slide just turns it round. */
+
+/* A pop-up menu in a capsule, its chevron drawn in. */
+.menu-pill {
+  appearance: none;
+  -webkit-appearance: none;
+  font: 600 15px/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  color: var(--label);
+  background: var(--fill)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238E8E93' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat right 12px center;
+  border: 0;
+  border-radius: 999px;
+  min-height: 32px;
+  padding: 0 30px 0 14px;
+  cursor: pointer;
+}
+.menu-pill:focus-visible { outline: 2px solid var(--tint, #0A84FF); outline-offset: 2px; }
 
 .seg {
   --n: 2;

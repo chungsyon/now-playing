@@ -445,6 +445,16 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.17.0** - Two new templates. Window: the photo in black and white
+  with one framed window where it stays in full colour, under a title in an
+  elegant serif. Bookmark: a tall strip of frosted glass down one side, one
+  corner swept rounder than the rest, a round cover and a warm title. Text
+  layers get a font picker (Serif, Elegant, Sans, Round, Mono), a weight
+  slider, a Capitals switch and, for lines of their own, a text box. Any
+  photo can be turned black and white (keyframeable). The template is
+  picked from a pop-up menu in the top bar, as four no longer fit side by
+  side. New faces: Cormorant Garamond and Montserrat (SIL Open Font
+  License).
 - **0.16.2** - With Move together on, the glass card moves with everything
   on it, whichever layer you hold. The artist line is semibold, slightly
   larger, and in the title's own colour, so it no longer sinks into the

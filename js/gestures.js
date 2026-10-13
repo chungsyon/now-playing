@@ -193,8 +193,9 @@ export function layerBounds(layer, project, stage, t = 0) {
       h = stage.width * scale * 0.42;
       break;
     case 'card':
+    case 'window':
       w = stage.width * scale;
-      h = w * (valueAt(p.ratio, t) || 1.2);
+      h = w * (valueAt(p.ratio, t) || (layer.type === 'card' ? 1.2 : 1.6));
       break;
     default:
       w = stage.width * scale;
@@ -463,7 +464,7 @@ export function attachGestures(element, api) {
       pivotY: base.lead.y,
       // A card's corner changes its width and height apart, so its shape is
       // whatever you drag it to. Everything else keeps its proportions.
-      mode: grabbed === 'scale' && layer.type === 'card' ? 'stretch' : grabbed,
+      mode: grabbed === 'scale' && (layer.type === 'card' || layer.type === 'window') ? 'stretch' : grabbed,
       midX: only.x,
       midY: only.y,
       grabRadius: Math.hypot(only.x - px, only.y - py),
@@ -527,7 +528,7 @@ export function attachGestures(element, api) {
       // everything else, so otherwise almost every touch on it would land on
       // the cover or the words instead.
       const held = selectedLayer();
-      const keepCard = !grabbed && held && held.type === 'card'
+      const keepCard = !grabbed && held && (held.type === 'card' || held.type === 'window')
         && inside(layerBounds(held, api.getProject(), api.getStage(), now()), point.x, point.y);
       if (!grabbed && !keepCard) {
         const hit = layerAt(api.getProject(), api.getStage(), point.x, point.y, now());

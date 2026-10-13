@@ -16,7 +16,7 @@ import {
   isKeyed, keyIndexAt, setValueAt, toggleKeyAt, SAME_MOMENT,
 } from '../model.js';
 import { EFFECTS, makeEffect } from '../effects.js';
-import { Stage, render } from '../render.js';
+import { Stage, render, FONT_CHOICES } from '../render.js';
 import { FPS, bitrateFor } from '../export.js';
 import { attachGestures, layerBounds, handleRadius, fitToSlide, setCard } from '../gestures.js';
 import { putStyle } from '../db.js';
@@ -855,9 +855,43 @@ function layersTab(box, app) {
     ));
   }
 
+  // The words: which face, how heavy, and for a line of its own, what it says.
+  if (selected && selected.type === 'text') {
+    const p = selected.props;
+    const redraw = () => { app.save(); drawOnce(app); };
+    const font = segmented(FONT_CHOICES, p.font || 'sans', value => {
+      p.font = value;
+      font.select(value);
+      redraw();
+    }, 'Font');
+    const words = p.bind ? null : h('input', {
+      class: 'input', type: 'text', value: p.text || '', 'aria-label': 'Text',
+      oninput: event => { p.text = event.target.value; redraw(); },
+    });
+    const weight = sliderRow({
+      label: 'Weight', min: 300, max: 800, step: 100,
+      value: p.weight || (p.bind === 'artist' ? 600 : 400),
+      format: value => String(value),
+      onInput: value => { p.weight = value; app.save(); drawOnce(app); },
+    });
+    box.append(section('Text',
+      h('div', { class: 'section', style: { gap: '10px' } },
+        font,
+        h('div', { class: 'group group--pad' }, words, weight),
+        switchRow('Capitals', !!p.uppercase, on => { p.uppercase = on; redraw(); }),
+      )));
+  }
+
   const card = project.layers.find(l => l.type === 'card');
+  const colourWindow = project.layers.find(l => l.type === 'window');
   box.append(
-    section('Background', h('div', { class: 'section', style: { gap: '10px' } }, background, blurBox, swatches)),
+    section('Background', h('div', { class: 'section', style: { gap: '10px' } }, background, blurBox, swatches,
+      photo.props.mode === 'solid' ? null : h('div', { class: 'group group--pad' }, keyedSlider(app, {
+        label: 'Black and white',
+        holder: photo.props, key: 'mono',
+        min: 0, max: 1, step: 0.01, fallback: 0,
+        format: value => `${Math.round(value * 100)}%`,
+      })))),
 
     section('Arrange',
       h('div', { class: 'group' },
@@ -910,6 +944,31 @@ function layersTab(box, app) {
       ),
       footnote('On the slide, drag one of the card\'s corners to change its shape. With '
         + 'Move together off, dragging the card moves it on its own.'),
+    ) : null,
+
+    colourWindow ? section('Colour window',
+      h('div', { class: 'group group--pad' },
+        keyedSlider(app, {
+          label: 'Width',
+          holder: colourWindow.props, key: 'scale',
+          min: 0.15, max: 1, step: 0.005, fallback: 0.46,
+          format: value => `${Math.round(value * 100)}%`,
+        }),
+        keyedSlider(app, {
+          label: 'Height',
+          holder: colourWindow.props, key: 'ratio',
+          min: 0.3, max: 2.5, step: 0.01, fallback: 1.45,
+          format: value => `${Math.round(value * 100)}% of width`,
+        }),
+        keyedSlider(app, {
+          label: 'Corner roundness',
+          holder: colourWindow.props, key: 'radius',
+          min: 0, max: 0.5, step: 0.005, fallback: 0.06,
+          format: value => `${Math.round(value * 200)}%`,
+        }),
+      ),
+      footnote('The window shows the photo in full colour, lined up with the same spot behind it. '
+        + 'Turn Black and white down under Background to colour the rest back in.'),
     ) : null,
   );
   // Written into rather than rebuilt, so the switch keeps sliding.
@@ -1234,22 +1293,24 @@ function songTab(box, app) {
 // ---------------------------------------------------------------------------
 
 export function templateSwitcher(app) {
-  const switcher = segmented(
-    Object.values(TEMPLATES).map(t => ({ value: t.id, label: t.label })),
-    app.state.project.template,
-    value => {
-      // Tapping the template already in use is not a request to start over.
+  // A pop-up menu rather than a segmented control: four names do not fit
+  // beside undo, redo and Export on a phone, and the system picker does.
+  const menu = h('select', {
+    class: 'menu-pill',
+    'aria-label': 'Template',
+    onchange: () => {
+      const value = menu.value;
+      // Picking the template already in use is not a request to start over.
       if (value === app.state.project.template) return;
       fitToSlide(applyTemplate(app.state.project, value));
       app.state.selectedLayerId = null;
-      switcher.select(value);
       app.save();
       buildSheet(app);
       drawOnce(app);
     },
-    'Template',
-  );
-  return switcher;
+  }, ...Object.values(TEMPLATES).map(t => h('option', { value: t.id }, t.label)));
+  menu.value = app.state.project.template;
+  return menu;
 }
 
 export function redraw(app) {

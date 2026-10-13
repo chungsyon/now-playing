@@ -203,7 +203,6 @@ function buildTopbar() {
     left.append(undoButton, redoButton);
     syncHistoryButtons();
     middle = editor.templateSwitcher(app);
-    middle.style.minWidth = '150px';
     right.append(h('button', {
       class: 'btn btn--primary btn--small',
       type: 'button',
@@ -384,6 +383,8 @@ async function boot() {
       await Promise.all([
         '16px "DM Sans"', '16px "Instrument Serif"',
         'italic 16px "Instrument Serif"', '16px "JetBrains Mono"',
+        '300 16px "Cormorant Garamond"', '600 16px "Cormorant Garamond"',
+        '400 16px "Montserrat"', '600 16px "Montserrat"',
       ].map(face => document.fonts.load(face)));
     } catch { /* carry on with fallbacks */ }
   }
