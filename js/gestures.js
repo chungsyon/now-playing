@@ -313,7 +313,7 @@ export function setCard(project, on) {
     }
   }
   const first = around([...times][0] ?? 0);
-  const props = { ...first, radius: 0.075, blur: 30 };
+  const props = { ...first, radius: 0.075, blur: 12 };
   if (times.size) {
     const sorted = [...times].sort((a, b) => a - b);
     const at = sorted.map(around);

@@ -895,7 +895,7 @@ function layersTab(box, app) {
         keyedSlider(app, {
           label: 'Glass blur',
           holder: card.props, key: 'blur',
-          min: 0, max: 80, step: 1, fallback: 30,
+          min: 0, max: 80, step: 1, fallback: 12,
           format: value => String(value),
         }),
       ),

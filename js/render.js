@@ -826,9 +826,10 @@ function roundedRect(c, x, y, w, h, r, fresh = true) {
 // --- card ------------------------------------------------------------------
 
 /**
- * Frosted glass for the card: everything drawn so far, blurred. Under the
- * card that is the photo, which holds still, so the blur is kept and only
- * redone when the photo, its effects or the slide's size change.
+ * What the card is made from: everything drawn so far, blurred by the card's
+ * own amount and read back as pixels for the lens. Under the card that is the
+ * photo, which holds still, so this is kept and only redone when the photo,
+ * its effects or the slide's size change.
  *
  * ponytail: the key only knows about the photo, which is right while the card
  * sits straight above it, as the Player template puts it. A layer slipped in
@@ -840,49 +841,181 @@ function glassBehind(stage, project, t, pixels) {
     photo && [photo.visible, photo.props, photo.effects],
     stage.width, stage.height, stage.mediaKey(),
     // ponytail: a keyed photo changes under the glass, so the glass is redone
-    // ten times a second rather than every frame. Through a blur that heavy
-    // the steps do not show; every frame if they ever do.
+    // ten times a second rather than every frame. Through glass the steps do
+    // not show; every frame if they ever do.
     photo && !holdsStill(photo) ? Math.round(t * 10) : 0,
     Math.round(pixels * 2),
   ]);
   if (stage.glassKey === key) return stage.glass;
 
-  const blurred = stage.blurred(stage.canvas, pixels);
-  // No canvas filter in this browser (Safari before 17): no glass, and the
-  // card falls back to a deeper tint instead.
-  if (blurred === stage.canvas) return null;
   if (!stage.glass) {
     stage.glass = document.createElement('canvas');
     stage.glass.width = stage.width;
     stage.glass.height = stage.height;
   }
-  // Glass lifts the colour of what is behind it rather than dulling it:
-  // the frosted copy is a little more saturated and a little brighter.
+  // Glass lifts the colour of what is behind it rather than dulling it.
+  // Safari before 17 has no canvas filter: the glass is then simply clear.
   const g = stage.glass.getContext('2d');
-  g.filter = 'saturate(1.6) brightness(1.08)';
-  g.drawImage(blurred, 0, 0);
+  g.filter = 'saturate(1.5) brightness(1.06)';
+  g.drawImage(stage.blurred(stage.canvas, pixels), 0, 0);
   g.filter = 'none';
+  try {
+    stage.glassPixels = g.getImageData(0, 0, stage.width, stage.height).data;
+  } catch {
+    stage.glassPixels = null; // a photo the browser will not let us read
+  }
   stage.glassKey = key;
   return stage.glass;
 }
 
 /**
- * The panel the player sits on: a pane of frosted glass in the cover's
- * darkest tone, with an edge that catches the light, brightest along the top
- * like light falling on a sheet of glass from above.
+ * The rim of a pane of Liquid Glass, worked out once per card shape.
+ *
+ * The pane is a slab whose edge rounds over like a squircle, (1 - (1 - x)^4)^¼
+ * across a bezel. Light coming up through that curved edge is bent by Snell's
+ * law (glass, n = 1.5), so each point of the rim shows the backdrop from a
+ * little further in: a thin band where the picture is drawn in toward the
+ * middle, strongest right at the edge, gone a bezel's width inside. The flat
+ * middle bends nothing and is drawn straight. Each point also keeps its
+ * outward normal, which the highlight uses.
+ */
+function lensFor(stage, w, h, r) {
+  const W = Math.ceil(w);
+  const H = Math.ceil(h);
+  const bezel = Math.max(4, Math.min(w, h) * 0.11);
+  const key = [W, H, Math.round(r), Math.round(bezel)].join();
+  if (stage.lens && stage.lens.key === key) return stage.lens;
+
+  const sheen = Math.max(1.2, Math.min(w, h) * 0.006);
+  const index = [], at = [], nx = [], ny = [], bend = [], line = [], glow = [], cover = [];
+  const hx = w / 2 - r;
+  const hy = h / 2 - r;
+  for (let j = 0; j < H; j++) {
+    for (let i = 0; i < W; i++) {
+      const px = i + 0.5 - w / 2;
+      const py = j + 0.5 - h / 2;
+      const qx = Math.abs(px) - hx;
+      const qy = Math.abs(py) - hy;
+      // Distance in from the edge of the rounded rectangle, and the way out.
+      let d, ox, oy;
+      if (qx > 0 && qy > 0) {
+        const len = Math.hypot(qx, qy) || 1;
+        d = r - len;
+        ox = (qx / len) * Math.sign(px);
+        oy = (qy / len) * Math.sign(py);
+      } else if (qx > qy) {
+        d = r - qx; ox = Math.sign(px); oy = 0;
+      } else {
+        d = r - qy; ox = 0; oy = Math.sign(py);
+      }
+      if (d <= -0.5 || d >= bezel) continue;
+
+      const x = Math.max(0, d) / bezel;
+      const inner = 1 - x;
+      const rest = 1 - inner ** 4;
+      const slope = Math.min(40, inner ** 3 / Math.max(1e-3, rest) ** 0.75);
+      const tilt = Math.atan(slope);
+      const bent = tilt - Math.asin(Math.sin(tilt) / 1.5);
+
+      index.push((j * W + i) * 4);
+      at.push(px, py);
+      nx.push(ox);
+      ny.push(oy);
+      bend.push(Math.min(bezel, bezel * 0.6 * Math.tan(bent)));
+      line.push(Math.exp(-Math.max(0, d) / sheen));
+      glow.push(inner ** 3);
+      cover.push(Math.min(1, d + 0.5));
+    }
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  stage.lens = {
+    key, W, H, canvas, ctx,
+    image: ctx.createImageData(W, H),
+    index: Int32Array.from(index),
+    at: Float32Array.from(at),
+    nx: Float32Array.from(nx), ny: Float32Array.from(ny),
+    bend: Float32Array.from(bend),
+    line: Float32Array.from(line), glow: Float32Array.from(glow),
+    cover: Uint8ClampedArray.from(cover, v => v * 255),
+    drawn: null,
+  };
+  return stage.lens;
+}
+
+/**
+ * Bend the backdrop through the rim and light its edge, into the lens's own
+ * canvas, in the card's own coordinates. `m` maps those onto the slide.
+ *
+ * Red, green and blue bend by slightly different amounts, as they do in real
+ * glass, which leaves a faint rainbow fringe where the bend is strongest.
+ * The highlight follows the normal: brightest where the edge faces a light
+ * up and to the left, fainter where it faces away, as light leaving the
+ * glass catches the far side.
+ */
+function paintLens(stage, lens, m) {
+  const { index, at, nx, ny, bend, line, glow, cover } = lens;
+  const src = stage.glassPixels;
+  const SW = stage.width;
+  const SH = stage.height;
+  const out = lens.image.data;
+  // The light, as a direction on the card. Turning the card turns the edge,
+  // not the light, so the light is brought into the card's own frame.
+  const angle = Math.atan2(m.b, m.a);
+  const lx = -0.6 * Math.cos(angle) - 0.8 * Math.sin(angle);
+  const ly = 0.6 * Math.sin(angle) - 0.8 * Math.cos(angle);
+  // Plain numbers: a DOMMatrix's fields are slow to read a million times.
+  const { a, b, c, d, e, f } = m;
+  const sample = (x, y, ch) => {
+    let X = (a * x + c * y + e) | 0;
+    let Y = (b * x + d * y + f) | 0;
+    X = X < 0 ? 0 : X >= SW ? SW - 1 : X;
+    Y = Y < 0 ? 0 : Y >= SH ? SH - 1 : Y;
+    return src[(Y * SW + X) * 4 + ch];
+  };
+
+  for (let k = 0, n = nx.length; k < n; k++) {
+    const px = at[k * 2];
+    const py = at[k * 2 + 1];
+    const o = index[k];
+    const ox = nx[k] * bend[k];
+    const oy = ny[k] * bend[k];
+    const red = sample(px - ox * 0.9, py - oy * 0.9, 0);
+    const green = sample(px - ox, py - oy, 1);
+    const blue = sample(px - ox * 1.12, py - oy * 1.12, 2);
+    // Light. A thin bright line right at the edge where it faces the light,
+    // a softer glow fading in across the bezel, more on the lit side.
+    const facing = nx[k] * lx + ny[k] * ly;
+    const lit = facing > 0 ? facing * facing : 0.35 * facing * facing;
+    let light = line[k] * (0.24 + 0.71 * lit) + glow[k] * (0.1 + 0.12 * lit);
+    if (light > 1) light = 1;
+    out[o] = red + (255 - red) * light;
+    out[o + 1] = green + (255 - green) * light;
+    out[o + 2] = blue + (255 - blue) * light;
+    out[o + 3] = cover[k];
+  }
+  lens.ctx.putImageData(lens.image, 0, 0);
+}
+
+/**
+ * The panel the player sits on, made as Apple's Liquid Glass: a clear pane
+ * that lets the picture through, bends it at a rounded rim like a lens, takes
+ * a breath of the cover's colour, and catches the light along its edge.
  */
 function drawCard(ctx, layer, project, t, stage) {
   const p = layer.props;
   const tones = coverTones(project.palette);
   // Blur is per 1000 pixels of slide width, like the Blur effect, so the
-  // preview and the file agree. Nothing to blur means clear glass.
-  const pixels = ((valueAt(p.blur, t) ?? 30) * stage.width) / 1000;
-  const frosted = pixels >= 0.5;
-  const glass = frosted ? glassBehind(stage, project, t, pixels) : null;
+  // preview and the file agree. None at all is perfectly clear glass.
+  const pixels = ((valueAt(p.blur, t) ?? 12) * stage.width) / 1000;
+  const glass = glassBehind(stage, project, t, pixels);
 
   placed(ctx, layer, t, stage, (c, scale) => {
     const w = stage.width * scale;
     const h = w * (valueAt(p.ratio, t) || 1.2);
+    if (!(w >= 2 && h >= 2)) return;
     // Roundness is a fraction of the card's width; at its most the short
     // sides become full semicircles.
     const r = Math.min(Math.min(w, h) / 2, w * Math.max(0, valueAt(p.radius, t) ?? 0.075));
@@ -891,124 +1024,52 @@ function drawCard(ctx, layer, project, t, stage) {
     // A soft shadow under the pane, drawn on its own so it never darkens the
     // glass itself.
     c.save();
-    c.shadowColor = 'rgba(0, 0, 0, 0.4)';
-    c.shadowBlur = w * 0.1;
-    c.shadowOffsetY = w * 0.03;
+    c.shadowColor = 'rgba(0, 0, 0, 0.35)';
+    c.shadowBlur = w * 0.08;
+    c.shadowOffsetY = w * 0.025;
     shape();
-    // No blur filter in this browser: a deeper tint stands in for the frost.
-    c.fillStyle = withAlpha(tones.deep, frosted && !glass ? 0.6 : 0.3);
+    c.fillStyle = withAlpha(tones.deep, 0.3);
     c.fill();
     c.restore();
 
-    if (glass) {
-      c.save();
-      shape();
-      c.clip();
-      // The clip stays where it is on the slide; the blurred copy is drawn
-      // back exactly over the part of the slide it was made from.
-      const matrix = c.getTransform();
-      c.setTransform(1, 0, 0, 1, 0, 0);
-      c.drawImage(glass, 0, 0);
-      c.setTransform(matrix);
-
-      // Refraction. A real pane is thicker at its rim and bends what is
-      // behind it there, so the backdrop is drawn magnified in bands that
-      // grow stronger toward the edge, about the card's own middle.
-      // Six thin bands, so the bend reads as a curve rather than as steps.
-      const rim = Math.min(w, h) * 0.08;
-      const cx = matrix.e;
-      const cy = matrix.f;
-      const BANDS = 6;
-      for (let depth = BANDS; depth >= 1; depth--) {
-        const zoom = 1 + 0.11 * Math.pow(1 - (depth - 1) / BANDS, 2);
-        const inset = (rim * (depth - 1)) / BANDS;
-        const inner = (rim * depth) / BANDS;
-        c.save();
-        roundedRect(c, -w / 2 + inset, -h / 2 + inset, w - inset * 2, h - inset * 2, r - inset);
-        roundedRect(c, -w / 2 + inner, -h / 2 + inner, w - inner * 2, h - inner * 2, r - inner, false);
-        c.clip('evenodd');
-        c.setTransform(zoom, 0, 0, zoom, cx - zoom * cx, cy - zoom * cy);
-        c.drawImage(glass, 0, 0);
-        c.restore();
-      }
-
-      shape();
-      c.fillStyle = withAlpha(tones.deep, 0.16);
-      c.fill();
-      c.restore();
-    }
-
-    // Frost: the pane is lighter than what is behind it, which is what makes
-    // it read as glass on a dark photo instead of vanishing into it.
-    shape();
-    c.fillStyle = 'rgba(255, 255, 255, 0.08)';
-    c.fill();
-
+    // The flat middle: the picture behind, straight through, drawn back
+    // exactly over the part of the slide it was made from.
     c.save();
     shape();
     c.clip();
+    const m = c.getTransform();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.drawImage(glass, 0, 0);
+    c.setTransform(m);
+    c.restore();
 
-    // Light on the face of the glass, strongest at the top.
-    const face = c.createLinearGradient(0, -h / 2, 0, h / 2);
-    face.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
-    face.addColorStop(0.4, 'rgba(255, 255, 255, 0.02)');
-    face.addColorStop(1, 'rgba(255, 255, 255, 0.05)');
-    c.fillStyle = face;
+    if (stage.glassPixels) {
+      // The rim. Redone only when the card, or what is behind it, changes.
+      const lens = lensFor(stage, w, h, r);
+      const drawn = [stage.glassKey, m.a, m.b, m.c, m.d, Math.round(m.e * 4), Math.round(m.f * 4)].join();
+      if (lens.drawn !== drawn) {
+        paintLens(stage, lens, m);
+        lens.drawn = drawn;
+      }
+      c.drawImage(lens.canvas, -w / 2, -h / 2);
+    }
+
+    // A breath of the cover's colour over the whole pane, rim and all, and
+    // the faintest lift so it still reads as there on a dark photo.
+    c.save();
+    shape();
+    c.clip();
+    c.fillStyle = withAlpha(tones.deep, 0.1);
     c.fillRect(-w / 2, -h / 2, w, h);
-
-    // A gloss: one soft diagonal streak across the upper corner, the
-    // reflection of a light somewhere above and to the left.
-    const gloss = c.createLinearGradient(-w / 2, -h / 2, w * 0.1, h * 0.15);
-    gloss.addColorStop(0, 'rgba(255, 255, 255, 0.14)');
-    gloss.addColorStop(0.5, 'rgba(255, 255, 255, 0.04)');
-    gloss.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    c.fillStyle = gloss;
+    c.fillStyle = 'rgba(255, 255, 255, 0.05)';
     c.fillRect(-w / 2, -h / 2, w, h);
-
-    // The rim brightens all the way round, as glass does where you look
-    // through more of it. Several faint strokes of growing width, so the
-    // glow fades out smoothly instead of ending in a second outline.
-    // Clipped, so only the inside half of each shows.
-    c.strokeStyle = 'rgba(255, 255, 255, 0.014)';
-    for (let i = 1; i <= 6; i++) {
-      c.lineWidth = Math.min(w, h) * 0.013 * i;
+    if (!stage.glassPixels) {
+      // No pixels to bend: light the edge with a plain stroke instead.
+      c.lineWidth = Math.max(2, w * 0.008);
+      c.strokeStyle = 'rgba(255, 255, 255, 0.5)';
       shape();
       c.stroke();
     }
-
-    // Specular highlights. Light from above and to the left catches the rim
-    // brightest near the top-left corner and fades away along both edges
-    // from there, rather than running as one even line across the top.
-    // Light leaving the glass gives a fainter glint at the opposite corner.
-    const reach = Math.hypot(w, h);
-    const glint = (x, y, alpha) => {
-      const g = c.createRadialGradient(x, y, 0, x, y, reach * 0.75);
-      g.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
-      g.addColorStop(0.35, `rgba(255, 255, 255, ${alpha * 0.35})`);
-      g.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      return g;
-    };
-    c.lineWidth = Math.max(2, w * 0.008);
-    c.strokeStyle = glint(-w * 0.3, -h / 2, 0.9);
-    shape();
-    c.stroke();
-    c.strokeStyle = glint(w * 0.35, h / 2, 0.35);
-    shape();
-    c.stroke();
-    // A breath of the cover's colour all the way round, so the pane belongs
-    // to the record on it.
-    c.lineWidth = Math.max(1.5, w * 0.004);
-    c.strokeStyle = withAlpha(tones.accent, 0.18);
-    shape();
-    c.stroke();
     c.restore();
-
-    // A faint dark line hugging the outside of the edge, so the pane still
-    // has one on a light photo. Same curve as the card, half outside it.
-    c.lineWidth = Math.max(1, w * 0.0025);
-    c.strokeStyle = 'rgba(0, 0, 0, 0.14)';
-    roundedRect(c, -w / 2 - c.lineWidth / 2, -h / 2 - c.lineWidth / 2,
-      w + c.lineWidth, h + c.lineWidth, r + c.lineWidth / 2);
-    c.stroke();
   });
 }

@@ -259,7 +259,7 @@ export const TEMPLATES = {
           effects: [{ type: 'blur', params: { radius: 34 } }],
         }),
         makeLayer('card', 'Card', {
-          x: 0.5, y: at(0), scale: 0.78 * k, ratio: 0.92 / 0.78, radius: 0.075, blur: 30,
+          x: 0.5, y: at(0), scale: 0.78 * k, ratio: 0.92 / 0.78, radius: 0.075, blur: 12,
         }),
         makeLayer('cover', 'Cover', { x: 0.5, y: at(-0.17 * k), scale: 0.46 * k, shadow: 0.5 }),
         makeLayer('text', 'Title', {
