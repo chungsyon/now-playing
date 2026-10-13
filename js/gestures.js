@@ -462,9 +462,11 @@ export function attachGestures(element, api) {
       ...base,
       pivotX: base.lead.x,
       pivotY: base.lead.y,
-      // A card's corner changes its width and height apart, so its shape is
-      // whatever you drag it to. Everything else keeps its proportions.
-      mode: grabbed === 'scale' && (layer.type === 'card' || layer.type === 'window') ? 'stretch' : grabbed,
+      // On its own, a card's corner changes its width and height apart, so
+      // its shape is whatever you drag it to. Moving together, the corner
+      // resizes the whole arrangement like any other layer's does.
+      mode: grabbed === 'scale' && base.members.length === 1
+        && (layer.type === 'card' || layer.type === 'window') ? 'stretch' : grabbed,
       midX: only.x,
       midY: only.y,
       grabRadius: Math.hypot(only.x - px, only.y - py),

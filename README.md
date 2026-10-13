@@ -445,6 +445,9 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.17.1** - With Move together on, a corner of the glass card or the
+  colour window resizes the whole arrangement. Off, it reshapes just that
+  one, as before.
 - **0.17.0** - Two new templates. Window: the photo in black and white
   with one framed window where it stays in full colour, under a title in an
   elegant serif. Bookmark: a tall strip of frosted glass down one side, one

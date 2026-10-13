@@ -942,8 +942,8 @@ function layersTab(box, app) {
           format: value => String(value),
         }),
       ),
-      footnote('On the slide, drag one of the card\'s corners to change its shape. With '
-        + 'Move together off, dragging the card moves it on its own.'),
+      footnote('With Move together on, dragging a corner of the card resizes everything. '
+        + 'Turn it off to move the card on its own and drag a corner to change its shape.'),
     ) : null,
 
     colourWindow ? section('Colour window',
