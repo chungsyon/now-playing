@@ -385,6 +385,7 @@ async function boot() {
         'italic 16px "Instrument Serif"', '16px "JetBrains Mono"',
         '300 16px "Cormorant Garamond"', '600 16px "Cormorant Garamond"',
         '400 16px "Montserrat"', '600 16px "Montserrat"',
+        '400 16px "Figtree"', '700 16px "Figtree"',
       ].map(face => document.fonts.load(face)));
     } catch { /* carry on with fallbacks */ }
   }

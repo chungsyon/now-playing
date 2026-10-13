@@ -313,7 +313,7 @@ export const TEMPLATES = {
     build(aspect = ASPECTS[1]) {
       const at = offset => 0.5 + offset * (aspect.w / aspect.h);
       const x = 0.72;
-      const round = { font: 'geometric', align: 'center', x };
+      const round = { font: 'clean', align: 'center', x };
       return [
         makeLayer('photo', 'Photo', { mode: 'photo' }, { locked: true }),
         makeLayer('card', 'Card', {
@@ -321,18 +321,18 @@ export const TEMPLATES = {
         }),
         makeLayer('text', 'Label', {
           ...round, bind: null, text: 'Now playing', uppercase: true, maxWidth: 0.3,
-          y: at(-0.345), size: 0.038, weight: 600, tracking: 0.06,
+          y: at(-0.345), size: 0.036, weight: 600, tracking: 0.04,
         }),
         makeLayer('cover', 'Cover', { x, y: at(-0.17), scale: 0.24, shadow: 0.35, round: true }),
         makeLayer('text', 'Title', {
           ...round, bind: 'title', maxWidth: 0.3,
-          y: at(0.0), size: 0.046, weight: 600, tracking: 0, tone: 'accent',
+          y: at(0.0), size: 0.05, weight: 700, tracking: -0.01, tone: 'accent',
         }),
         makeLayer('text', 'Artist', {
           ...round, bind: 'artist', maxWidth: 0.3,
-          y: at(0.045), size: 0.026, weight: 500, tracking: 0, tone: 'accent',
+          y: at(0.045), size: 0.028, weight: 400, tracking: 0, tone: 'accent',
         }),
-        makeLayer('progressBar', 'Progress', { x, y: at(0.16), scale: 0.32, speed: 1, showTimes: true }),
+        makeLayer('progressBar', 'Progress', { x, y: at(0.16), scale: 0.32, speed: 1, showTimes: true, font: 'clean' }),
         makeLayer('controls', 'Controls', { x, y: at(0.28), scale: 0.26, ring: true }),
       ];
     },

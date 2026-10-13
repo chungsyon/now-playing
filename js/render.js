@@ -35,6 +35,7 @@ const FONTS = {
   mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
   elegant: '"Cormorant Garamond", Georgia, "Times New Roman", serif',
   geometric: 'Montserrat, -apple-system, BlinkMacSystemFont, system-ui, sans-serif',
+  clean: 'Figtree, -apple-system, BlinkMacSystemFont, system-ui, sans-serif',
 };
 
 /** The faces a text layer can be set in, in the order the editor offers them. */
@@ -42,6 +43,7 @@ export const FONT_CHOICES = [
   { value: 'serif', label: 'Serif' },
   { value: 'elegant', label: 'Elegant' },
   { value: 'sans', label: 'Sans' },
+  { value: 'clean', label: 'Clean' },
   { value: 'geometric', label: 'Round' },
   { value: 'mono', label: 'Mono' },
 ];
@@ -995,7 +997,8 @@ function drawProgressBar(ctx, layer, project, t, stage) {
       c.fill();
 
       if (p.showTimes) {
-        c.font = `${timeSize}px ${FONTS.mono}`;
+        // The times can be set in the slide's own face; monospace otherwise.
+        c.font = `${p.font ? 500 : 400} ${timeSize}px ${FONTS[p.font] || FONTS.mono}`;
         c.textBaseline = 'middle';
         c.fillStyle = withAlpha(tones.soft, 0.85);
         c.textAlign = 'left';

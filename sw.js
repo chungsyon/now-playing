@@ -11,7 +11,7 @@
  * straight away.)
  */
 
-const VERSION = 36;
+const VERSION = 37;
 const CACHE = `now-playing-v${VERSION}`;
 
 const SHELL = [
@@ -49,6 +49,7 @@ const SHELL = [
   'assets/fonts/jetbrains-mono-var.woff2',
   'assets/fonts/cormorant-garamond-var.woff2',
   'assets/fonts/montserrat-var.woff2',
+  'assets/fonts/figtree-var.woff2',
 ];
 
 self.addEventListener('install', event => {

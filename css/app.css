@@ -53,6 +53,13 @@
   font-display: swap;
 }
 @font-face {
+  font-family: 'Figtree';
+  src: url('../assets/fonts/figtree-var.woff2') format('woff2');
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
   font-family: 'JetBrains Mono';
   src: url('../assets/fonts/jetbrains-mono-var.woff2') format('woff2');
   font-weight: 100 800;

@@ -445,6 +445,11 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.19.5** - A new face, Figtree ("Clean" in the font picker): a friendly
+  grotesk close to what streaming apps use. Bookmark is set in it: a bold
+  title, a regular artist line, and the times in the same face rather than
+  monospace (a progress bar can now take a font). Figtree is under the SIL
+  Open Font License.
 - **0.19.4** - Text keeps its kerning: lines are drawn as one run (with
   canvas letterSpacing for any spacing) instead of letter by letter, which
   had spaced every pair as if it were a box. Spaced capitals are tighter
