@@ -953,11 +953,11 @@ function drawProgressBar(ctx, layer, project, t, stage) {
   placed(ctx, layer, t, stage, (c, scale) => {
     const width = stage.width * scale;
     const half = width / 2;
-    // Both go with the bar's own length, so the numbers grow with it. They
-    // never drop below the size the Player's bar gives them, though: on a
-    // short bar, like the Bookmark's, they would be too small to read.
+    // Both go with the bar's own length, so the numbers shrink and grow with
+    // it. Monospace digits are wide, so they run a little smaller than the
+    // slide's own face does: 4.5% of the bar, as music apps set them.
     const thickness = Math.max(2, width * 0.0075);
-    const timeSize = Math.max(width * 0.036, stage.width * 0.021);
+    const timeSize = width * (p.font ? 0.045 : 0.036);
 
     // The line itself is always fully there.
     c.lineCap = 'round';
@@ -1001,7 +1001,7 @@ function drawProgressBar(ctx, layer, project, t, stage) {
 
       if (p.showTimes) {
         // The times can be set in the slide's own face; monospace otherwise.
-        c.font = `${p.font ? 500 : 400} ${timeSize}px ${FONTS[p.font] || FONTS.mono}`;
+        c.font = `400 ${timeSize}px ${FONTS[p.font] || FONTS.mono}`;
         c.textBaseline = 'middle';
         c.fillStyle = withAlpha(tones.soft, 0.85);
         c.textAlign = 'left';

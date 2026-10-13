@@ -445,6 +445,9 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.20.2** - Times sized like a music app's: 4.5% of the bar in the slide's
+  own face, regular weight (monospace stays at 3.6%). Replaces 0.20.1's
+  floor, which made them too large.
 - **0.20.1** - The times under a short bar (the Bookmark's) are as large as
   the Player's instead of half that.
 - **0.20.0** - Bookmark's heading is two lines again: "Now playing", and the
