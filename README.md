@@ -445,6 +445,7 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.21.2** - The spinning record no longer has a line across its grooves.
 - **0.21.1** - The progress bar's selection box hugs the bar, its knob and
   the times under it, instead of a fixed tall box. A corner handle now
   always goes to the nearest corner, which a short box needed.

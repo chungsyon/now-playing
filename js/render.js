@@ -737,14 +737,6 @@ function drawDisc(ctx, layer, project, t, stage) {
       c.stroke();
     }
 
-    // The lead-out. Being off-centre, it is what makes the turning visible.
-    c.beginPath();
-    c.moveTo(labelR + gap * 2, 0);
-    c.lineTo(R - gap * 2, 0);
-    c.lineWidth = Math.max(1, R * 0.005);
-    c.strokeStyle = 'rgba(255,240,225,0.09)';
-    c.stroke();
-
     // The label.
     c.beginPath();
     c.arc(0, 0, labelR, 0, Math.PI * 2);
