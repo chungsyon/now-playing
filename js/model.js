@@ -235,7 +235,7 @@ export const TEMPLATES = {
         }),
         makeLayer('text', 'Artist', {
           bind: 'artist', x: 0.5, y: 0.928, size: 0.03,
-          font: 'sans', align: 'center', tracking: 0.16, uppercase: true,
+          font: 'sans', align: 'center', tracking: 0.1, uppercase: true,
         }),
       ];
     },
@@ -269,7 +269,7 @@ export const TEMPLATES = {
         }),
         makeLayer('text', 'Artist', {
           bind: 'artist', x: 0.5, y: at(0.17 * k), size: 0.03, scale: k, maxWidth: 0.66,
-          font: 'sans', align: 'center', tracking: 0.16, uppercase: true,
+          font: 'sans', align: 'center', tracking: 0.1, uppercase: true,
         }),
         makeLayer('progressBar', 'Progress', {
           x: 0.5, y: at(0.235 * k), scale: 0.62 * k, speed: 1, showTimes: true,
@@ -320,16 +320,16 @@ export const TEMPLATES = {
           x, y: at(-0.02), scale: 0.4, ratio: 2.2, radius: 0.09, corners: 'bookmark', blur: 30,
         }),
         makeLayer('text', 'Label', {
-          ...round, bind: null, text: 'Now playing', uppercase: true, maxWidth: 0.34,
-          y: at(-0.345), size: 0.038, weight: 600, tracking: 0.1,
+          ...round, bind: null, text: 'Now playing', uppercase: true, maxWidth: 0.3,
+          y: at(-0.345), size: 0.038, weight: 600, tracking: 0.06,
         }),
         makeLayer('cover', 'Cover', { x, y: at(-0.17), scale: 0.24, shadow: 0.35, round: true }),
         makeLayer('text', 'Title', {
-          ...round, bind: 'title', maxWidth: 0.33,
+          ...round, bind: 'title', maxWidth: 0.3,
           y: at(0.0), size: 0.046, weight: 600, tracking: 0, tone: 'accent',
         }),
         makeLayer('text', 'Artist', {
-          ...round, bind: 'artist', maxWidth: 0.33,
+          ...round, bind: 'artist', maxWidth: 0.3,
           y: at(0.045), size: 0.026, weight: 500, tracking: 0, tone: 'accent',
         }),
         makeLayer('progressBar', 'Progress', { x, y: at(0.16), scale: 0.32, speed: 1, showTimes: true }),

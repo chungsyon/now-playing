@@ -798,14 +798,28 @@ function textFor(layer, project) {
 }
 
 /**
- * Draw text with letter spacing, one character at a time.
- * Canvas has a `letterSpacing` property now, but it arrived late in Safari,
- * so the spacing is done by hand and works everywhere.
+ * Draw text with letter spacing.
+ *
+ * Drawn as one run wherever possible, so the font's kerning (the small
+ * adjustments for pairs like "Yo" and "AV") survives: letter by letter, every
+ * pair is spaced as if it were a box, and words look subtly off. Spacing
+ * uses canvas letterSpacing where the browser has it (Safari 18, Chrome 99);
+ * only older browsers with spacing asked for fall back to one letter at a time.
  */
 function drawTracked(ctx, text, tracking, align, emSize) {
+  const extra = tracking * emSize;   // tracking is in em, like CSS letter-spacing
+  if (!extra || 'letterSpacing' in ctx) {
+    if (extra) ctx.letterSpacing = `${extra}px`;
+    // letterSpacing also pads after the last letter, which is not part of the
+    // word's width when it comes to centring it.
+    const total = ctx.measureText(text).width - extra;
+    const x = align === 'center' ? -total / 2 : align === 'right' ? -total : 0;
+    ctx.fillText(text, x, 0);
+    if (extra) ctx.letterSpacing = '0px';
+    return;
+  }
   const chars = [...text];
   const widths = chars.map(ch => ctx.measureText(ch).width);
-  const extra = tracking * emSize;   // tracking is in em, like CSS letter-spacing
   const total = widths.reduce((sum, w) => sum + w, 0) + extra * Math.max(0, chars.length - 1);
 
   let x = align === 'center' ? -total / 2 : align === 'right' ? -total : 0;

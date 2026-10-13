@@ -445,6 +445,11 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.19.4** - Text keeps its kerning: lines are drawn as one run (with
+  canvas letterSpacing for any spacing) instead of letter by letter, which
+  had spaced every pair as if it were a box. Spaced capitals are tighter
+  (artist lines 0.1 em, Now playing 0.06 em), and the Bookmark's words keep
+  a clear margin inside the card.
 - **0.19.3** - Bookmark's card starts at 220% of its width tall.
 - **0.19.2** - Readable on in-between backgrounds too. Each line's colour is
   pushed lighter or darker, keeping its hue, until it clears the usual
