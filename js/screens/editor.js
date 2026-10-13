@@ -16,7 +16,7 @@ import {
   isKeyed, keyIndexAt, setValueAt, toggleKeyAt, SAME_MOMENT,
 } from '../model.js';
 import { EFFECTS, makeEffect } from '../effects.js';
-import { Stage, render, FONT_CHOICES } from '../render.js';
+import { Stage, render, FONT_CHOICES, CORNER_SHAPES } from '../render.js';
 import { FPS, bitrateFor } from '../export.js';
 import { attachGestures, layerBounds, handleRadius, fitToSlide, setCard } from '../gestures.js';
 import { putStyle } from '../db.js';
@@ -36,6 +36,10 @@ let previewCtx = null;
 let overlay = null;
 let overlayCtx = null;
 let gestures = null;
+// How far the preview is zoomed in, from ZOOMS. The slide is drawn bigger
+// and the area round it scrolls.
+const ZOOMS = [1, 1.5, 2, 3];
+let zoom = 1;
 let frameHandle = null;
 let playing = false;
 let playStart = 0;
@@ -77,6 +81,7 @@ function deletePickedKeys(app) {
 
 export async function enter(root, app) {
   currentApp = app;
+  zoom = 1;
   clear(root);
 
   const preview = h('canvas', { 'aria-label': 'Preview of the slide' });
@@ -89,6 +94,19 @@ export async function enter(root, app) {
   timer = loopTimer();
   const sizeRead = h('span', { class: 'transport__size' },
     `${app.state.project.aspect.w}×${app.state.project.aspect.h}`);
+
+  const zoomRead = h('span', { class: 'zoom__read' }, `${Math.round(zoom * 100)}%`);
+  const zoomBy = step => {
+    const next = ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + step))];
+    if (next === zoom) return;
+    zoom = next;
+    zoomRead.textContent = `${Math.round(zoom * 100)}%`;
+    buildStage(app, preview);
+  };
+  const zoomControl = h('div', { class: 'zoom', role: 'group', 'aria-label': 'Zoom' },
+    h('button', { class: 'zoom__btn', type: 'button', 'aria-label': 'Zoom out', onclick: () => zoomBy(-1) }, '\u2212'),
+    zoomRead,
+    h('button', { class: 'zoom__btn', type: 'button', 'aria-label': 'Zoom in', onclick: () => zoomBy(1) }, '+'));
 
   const playButton = iconButton('play', 'Play the loop', () => togglePlay(playButton));
   playButtonRef = playButton;
@@ -115,6 +133,7 @@ export async function enter(root, app) {
       playButton,
       timer.node,
       sizeRead,
+      zoomControl,
     ),
     h('div', { class: 'sheet' }, tabs, sheetBody),
   );
@@ -155,6 +174,22 @@ export async function enter(root, app) {
     getTime: () => currentTime(app),
     onStart: pause,
   });
+
+  // Zoomed in, a drag that picks nothing up moves the view instead. Listened
+  // for after the gestures, so the selection is already settled by then.
+  let panning = null;
+  overlay.addEventListener('pointerdown', event => {
+    if (zoom === 1 || app.state.selectedLayerId) return;
+    panning = { x: event.clientX, y: event.clientY, left: stageArea.scrollLeft, top: stageArea.scrollTop };
+  });
+  overlay.addEventListener('pointermove', event => {
+    if (!panning) return;
+    stageArea.scrollLeft = panning.left - (event.clientX - panning.x);
+    stageArea.scrollTop = panning.top - (event.clientY - panning.y);
+  });
+  for (const type of ['pointerup', 'pointercancel']) {
+    overlay.addEventListener(type, () => { panning = null; });
+  }
 
   // Arrow keys nudge the selection. Listening on the window rather than the
   // canvas means it works without clicking the slide first, which is what
@@ -249,11 +284,20 @@ function buildStage(app, preview) {
   const padY = parseFloat(pad.paddingTop) + parseFloat(pad.paddingBottom);
   const roomWidth = Math.min(previewCap(), (area.clientWidth || 340) - padX);
   const roomHeight = Math.max(160, (area.clientHeight || 360) - padY);
-  const cssWidth = Math.floor(Math.min(roomWidth, roomHeight / ratio));
+  // The slide fits the room at 100%; zoomed, it outgrows it and the room
+  // scrolls. The view keeps the same middle as it grows or shrinks.
+  const cssWidth = Math.floor(Math.min(roomWidth, roomHeight / ratio) * zoom);
   const cssHeight = Math.round(cssWidth * ratio);
+  const middle = {
+    x: (area.scrollLeft + area.clientWidth / 2) / (area.scrollWidth || 1),
+    y: (area.scrollTop + area.clientHeight / 2) / (area.scrollHeight || 1),
+  };
+  area.classList.toggle('is-zoomed', zoom > 1);
 
   wrap.style.width = `${cssWidth}px`;
   wrap.style.height = `${cssHeight}px`;
+  area.scrollLeft = middle.x * area.scrollWidth - area.clientWidth / 2;
+  area.scrollTop = middle.y * area.scrollHeight - area.clientHeight / 2;
 
   // Draw at the screen's own sharpness (3x on an iPhone), never past the
   // slide's real size. Everything is stored as a fraction, so this changes
@@ -736,6 +780,34 @@ function buildSheet(app, toTop = false) {
 
 // --- Layers ----------------------------------------------------------------
 
+/**
+ * Pick which corners of a pane are round. Each button is a little drawing
+ * of the shape, its corners rounded in CSS the same way.
+ */
+function shapePicker(app, layer) {
+  const current = () => layer.props.corners || (layer.props.bigCorner ? 'bookmark' : 'round');
+  const row = h('div', { class: 'shapes', role: 'radiogroup', 'aria-label': 'Corners' });
+  for (const shape of CORNER_SHAPES) {
+    const swatch = h('span', {
+      class: 'shapes__swatch',
+      style: { borderRadius: shape.corners.map(k => `${Math.round(k * 7)}px`).join(' ') },
+    });
+    const button = h('button', {
+      class: 'shapes__option', type: 'button', role: 'radio',
+      'aria-checked': String(current() === shape.value), 'aria-label': shape.label, title: shape.label,
+      onclick: () => {
+        layer.props.corners = shape.value;
+        delete layer.props.bigCorner;
+        for (const b of row.children) b.setAttribute('aria-checked', String(b === button));
+        app.save();
+        drawOnce(app);
+      },
+    }, swatch);
+    row.append(button);
+  }
+  return row;
+}
+
 function layersTab(box, app) {
   const project = app.state.project;
   const photo = project.layers.find(l => l.type === 'photo');
@@ -912,6 +984,7 @@ function layersTab(box, app) {
     ),
 
     card ? section('Glass card',
+      shapePicker(app, card),
       h('div', { class: 'group group--pad' },
         // Size and shape apart from what is on it. On the slide, drag the
         // card to move it alone and drag a corner to reshape it.
@@ -947,6 +1020,7 @@ function layersTab(box, app) {
     ) : null,
 
     colourWindow ? section('Colour window',
+      shapePicker(app, colourWindow),
       h('div', { class: 'group group--pad' },
         keyedSlider(app, {
           label: 'Width',

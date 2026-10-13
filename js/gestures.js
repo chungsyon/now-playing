@@ -166,6 +166,8 @@ export function layerBounds(layer, project, stage, t = 0) {
 
   let w;
   let h;
+  // Text set from its left or right end sits to one side of its point.
+  let shift = 0;
   switch (layer.type) {
     case 'photo':
       return { cx: stage.width / 2, cy: stage.height / 2, w: stage.width, h: stage.height, rotation: 0 };
@@ -181,7 +183,9 @@ export function layerBounds(layer, project, stage, t = 0) {
         : p.text || '';
       const chars = Math.max(4, [...(text || 'Untitled')].length);
       w = chars * size * (0.55 + (p.tracking || 0));
+      if (p.maxWidth) w = Math.min(w, stage.width * p.maxWidth * scale);
       h = size * 1.6;
+      shift = p.align === 'left' ? w / 2 : p.align === 'right' ? -w / 2 : 0;
       break;
     }
     case 'progressBar':
@@ -201,7 +205,8 @@ export function layerBounds(layer, project, stage, t = 0) {
       w = stage.width * scale;
       h = w;
   }
-  return { cx, cy, w, h, rotation };
+  const turn = (rotation * Math.PI) / 180;
+  return { cx: cx + shift * Math.cos(turn), cy: cy + shift * Math.sin(turn), w, h, rotation };
 }
 
 /**

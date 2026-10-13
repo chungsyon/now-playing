@@ -534,8 +534,11 @@ function drawWindow(ctx, layer, project, t, stage) {
   placed(ctx, layer, t, stage, (c, scale) => {
     const w = stage.width * scale;
     const h = w * (valueAt(p.ratio, t) || 1.6);
-    const r = Math.min(w, h) * Math.max(0, valueAt(p.radius, t) ?? 0.06);
-    const shape = () => roundedRect(c, -w / 2, -h / 2, w, h, r);
+    // Roundness is a fraction of the shorter side here, so it is turned into
+    // the width-based measure the shapes share.
+    const roundness = (Math.min(w, h) / w) * (valueAt(p.radius, t) ?? 0.06);
+    const radii = cornerRadii(p, t, w, h, roundness);
+    const shape = () => roundedRect(c, -w / 2, -h / 2, w, h, radii);
 
     c.save();
     c.shadowColor = 'rgba(0, 0, 0, 0.35)';
@@ -915,6 +918,30 @@ function drawControls(ctx, layer, project, t, stage) {
 }
 
 /**
+ * Shapes a pane can take: how round each corner is, top left, top right,
+ * bottom right, bottom left, as a multiple of the pane's corner roundness.
+ * Two times on the leaf shapes, so their round corners read as a choice.
+ */
+export const CORNER_SHAPES = [
+  { value: 'round', label: 'All round', corners: [1, 1, 1, 1] },
+  { value: 'bookmark', label: 'Bookmark', corners: [1, 2.2, 1, 1] },
+  { value: 'leaf', label: 'Top right and bottom left', corners: [0, 2, 0, 2] },
+  { value: 'leafFlip', label: 'Top left and bottom right', corners: [2, 0, 2, 0] },
+  { value: 'top', label: 'Top only', corners: [1.5, 1.5, 0, 0] },
+  { value: 'square', label: 'Square', corners: [0, 0, 0, 0] },
+];
+
+/** The four radii of a pane, in pixels, from its roundness and shape. */
+function cornerRadii(p, t, w, h, roundness) {
+  const most = Math.min(w, h) / 2;
+  const r = w * Math.max(0, roundness);
+  // Panes made before shapes could be picked had a bigger-corner amount.
+  const shape = p.corners || (p.bigCorner ? 'bookmark' : 'round');
+  const found = CORNER_SHAPES.find(s => s.value === shape) || CORNER_SHAPES[0];
+  return found.corners.map(k => Math.min(most, r * k));
+}
+
+/**
  * roundRect arrived in Safari 16; older phones get the same shape by hand.
  * `r` is one radius, or four: top left, top right, bottom right, bottom left.
  */
@@ -1130,11 +1157,7 @@ function drawCard(ctx, layer, project, t, stage) {
     if (!(w >= 2 && h >= 2)) return;
     // Roundness is a fraction of the card's width; at its most the short
     // sides become full semicircles.
-    const most = Math.min(w, h) / 2;
-    const r = Math.min(most, w * Math.max(0, valueAt(p.radius, t) ?? 0.075));
-    // A bookmark sweeps one corner, the top right, much rounder than the rest.
-    const big = p.bigCorner ? Math.min(most, w * valueAt(p.bigCorner, t)) : r;
-    const radii = [r, big, r, r];
+    const radii = cornerRadii(p, t, w, h, valueAt(p.radius, t) ?? 0.075);
     const shape = () => roundedRect(c, -w / 2, -h / 2, w, h, radii);
 
     // A soft shadow under the pane, drawn on its own so it never darkens the

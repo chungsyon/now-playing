@@ -289,17 +289,19 @@ export const TEMPLATES = {
       const white = '#FFFFFF';
       return [
         makeLayer('photo', 'Photo', { mode: 'photo', mono: 1 }, { locked: true }),
+        makeLayer('window', 'Window', { x: 0.5, y: at(-0.18), scale: 0.5, ratio: 1.3, radius: 0.06 }),
+        // A small player under the window: the cover, and the song beside it.
+        makeLayer('cover', 'Cover', { x: 0.31, y: at(0.245), scale: 0.12, shadow: 0.35 }),
         makeLayer('text', 'Title', {
-          bind: 'title', x: 0.5, y: at(-0.47), size: 0.072, maxWidth: 0.8,
-          font: 'elegant', weight: 500, align: 'center', tracking: 0, color: white,
+          bind: 'title', x: 0.4, y: at(0.225), size: 0.056, maxWidth: 0.36,
+          font: 'elegant', weight: 500, align: 'left', tracking: 0, color: white,
         }),
-        makeLayer('window', 'Window', { x: 0.5, y: at(-0.08), scale: 0.46, ratio: 1.45, radius: 0.06 }),
         makeLayer('text', 'Artist', {
-          bind: 'artist', x: 0.5, y: at(0.31), size: 0.03, maxWidth: 0.7,
-          font: 'sans', weight: 400, align: 'center', tracking: 0.02, color: white,
+          bind: 'artist', x: 0.4, y: at(0.272), size: 0.028, maxWidth: 0.36,
+          font: 'sans', weight: 400, align: 'left', tracking: 0.02, color: white,
         }),
-        makeLayer('progressBar', 'Progress', { x: 0.5, y: at(0.385), scale: 0.46, speed: 1, showTimes: true }),
-        makeLayer('controls', 'Controls', { x: 0.5, y: at(0.49), scale: 0.24 }),
+        makeLayer('progressBar', 'Progress', { x: 0.5, y: at(0.37), scale: 0.5, speed: 1, showTimes: true }),
+        makeLayer('controls', 'Controls', { x: 0.5, y: at(0.47), scale: 0.24 }),
       ];
     },
   },
@@ -316,7 +318,7 @@ export const TEMPLATES = {
       return [
         makeLayer('photo', 'Photo', { mode: 'photo' }, { locked: true }),
         makeLayer('card', 'Card', {
-          x, y: at(-0.04), scale: 0.4, ratio: 1.95, radius: 0.09, bigCorner: 0.2, blur: 30,
+          x, y: at(-0.04), scale: 0.4, ratio: 1.95, radius: 0.09, corners: 'bookmark', blur: 30,
         }),
         makeLayer('text', 'Label', {
           ...round, bind: null, text: 'Playing now', uppercase: true, maxWidth: 0.33,

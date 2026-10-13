@@ -430,6 +430,28 @@ button.row:active { background: var(--fill-strong); transition: none; }
    moves with a transition, which a browser retargets from wherever it is, so
    a second tap mid-slide just turns it round. */
 
+/* Corner shapes: six little panes, the chosen one outlined in the tint. */
+.shapes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.shapes__option {
+  display: grid;
+  place-items: center;
+  height: 52px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--fill);
+  cursor: pointer;
+  transition: transform 100ms ease-out;
+}
+.shapes__option:active { transform: scale(0.95); }
+.shapes__option[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--tint); }
+.shapes__swatch {
+  width: 22px;
+  height: 32px;
+  background: var(--label-2);
+  opacity: 0.85;
+}
+.shapes__option[aria-checked="true"] .shapes__swatch { background: var(--tint); opacity: 1; }
+
 /* A pop-up menu in a capsule, its chevron drawn in. */
 .menu-pill {
   appearance: none;
@@ -708,7 +730,38 @@ button.row:active { background: var(--fill-strong); transition: none; }
   box-shadow: var(--shadow);
   touch-action: none;
 }
+/* Zoomed in, the slide outgrows its room and the room scrolls. Auto
+   margins keep it centred while it fits and let it start at the edge once
+   it does not, so no part is ever out of reach. */
+.editor-stage.is-zoomed { overflow: auto; align-items: flex-start; justify-content: flex-start; }
+.stagewrap { flex: none; margin: auto; }
 .stagewrap canvas { display: block; width: 100%; height: 100%; }
+
+/* Zoom: minus, the amount, plus, in one small capsule. */
+.zoom {
+  display: flex;
+  align-items: center;
+  flex: none;
+  border-radius: 999px;
+  background: var(--fill);
+}
+.zoom__btn {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: none;
+  color: var(--label);
+  font: 500 18px/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  cursor: pointer;
+}
+.zoom__btn:active { opacity: 0.5; }
+.zoom__read {
+  min-width: 38px;
+  text-align: center;
+  color: var(--label-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
 .stagewrap__overlay { position: absolute; inset: 0; }
 
 /* Transport: play, and where in the loop we are, like a player's scrubber. */
@@ -721,6 +774,8 @@ button.row:active { background: var(--fill-strong); transition: none; }
 }
 .transport .btn--icon { color: var(--label); }
 .transport__size { color: var(--label-2); font-size: 13px; font-variant-numeric: tabular-nums; }
+/* On a phone the timeline needs the room more; Export still says the size. */
+@media (max-width: 430px) { .transport__size { display: none; } }
 
 .timer { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; }
 .timer__track {

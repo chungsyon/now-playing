@@ -445,6 +445,12 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.18.0** - Corner shapes for the glass card and the colour window: all
+  round, bookmark, top right and bottom left, top left and bottom right, top
+  only, or square. The preview zooms (100 to 300%, the − and + by the
+  timeline) and, zoomed, a drag on empty space moves the view. Window now
+  puts the song under the window, with the cover beside the title like a
+  small player. Left or right aligned text is selected where it is drawn.
 - **0.17.3** - Bookmark: the artist line under "Playing now" is gone, and
   "Playing now" is larger and bolder in its place.
 - **0.17.2** - Text on the slide has no drop shadow: clean, flat lettering.
