@@ -235,3 +235,25 @@ export function coverTonesDark(palette) {
   darkKept.set(key, tones);
   return tones;
 }
+
+/** WCAG contrast between two colours, 1 (none) to 21 (black on white). */
+export function contrast(a, b) {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * The colour, moved toward white or black (whichever the backdrop allows
+ * more of) just far enough to stand out against it by `ratio`, keeping as
+ * much of its own hue as it can. 4.5 is the usual bar for reading text.
+ */
+export function legibleOn(hex, behind, ratio) {
+  let rgb = parse(hex);
+  if (contrast(rgb, behind) >= ratio) return hex;
+  const toward = contrast([255, 255, 255], behind) >= contrast([0, 0, 0], behind)
+    ? [255, 255, 255] : [0, 0, 0];
+  for (let step = 0; contrast(rgb, behind) < ratio && step < 20; step++) {
+    rgb = mix(rgb, toward, 0.12);
+  }
+  return toHex(rgb);
+}

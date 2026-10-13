@@ -25,7 +25,7 @@
 
 import { valueAt, turnsPerLoop, formatTime, isKeyed } from './model.js';
 import { EFFECTS, withDefaults } from './effects.js';
-import { coverTones, coverTonesDark, withAlpha } from './color.js';
+import { coverTones, coverTonesDark, withAlpha, legibleOn, luminance } from './color.js';
 
 const ROOM = '#0E0D0C';
 
@@ -840,8 +840,8 @@ function tonesFor(stage, layer, project, t) {
     below.some(l => !holdsStill(l)) ? Math.round(t * 10) : 0,
   ]);
   if (!stage.contrast) stage.contrast = new Map();
-  let light = stage.contrast.get(layer.id + key);
-  if (light === undefined) {
+  let tones = stage.contrast.get(layer.id + key);
+  if (tones === undefined) {
     // The patch the layer covers, squeezed to a few pixels and averaged.
     const W = stage.width;
     const scale = valueAt(p.scale, t);
@@ -857,13 +857,26 @@ function tonesFor(stage, layer, project, t) {
     const probe = stage.probe.getContext('2d', { willReadFrequently: true });
     probe.drawImage(stage.canvas, cx - reach / 2, cy - size, reach, size * 2, 0, 0, 8, 4);
     const d = probe.getImageData(0, 0, 8, 4).data;
-    let sum = 0;
-    for (let i = 0; i < d.length; i += 4) sum += (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
-    light = sum / (d.length / 4) > 0.58;
+    const behind = [0, 0, 0];
+    for (let i = 0; i < d.length; i += 4) {
+      behind[0] += d[i]; behind[1] += d[i + 1]; behind[2] += d[i + 2];
+    }
+    const n = d.length / 4;
+    for (let i = 0; i < 3; i++) behind[i] = Math.round(behind[i] / n);
+    // Start from the light or the dark set, whichever suits, then push each
+    // tone just far enough to clear the usual reading contrast. On a middling
+    // grey neither set clears it as it stands; this is what fixes that.
+    const base = luminance(behind) > 0.18 ? coverTonesDark(project.palette) : coverTones(project.palette);
+    tones = {
+      accent: legibleOn(base.accent, behind, 4.5),
+      ink: legibleOn(base.ink, behind, 7),
+      soft: legibleOn(base.soft, behind, 4.5),
+      deep: base.deep,
+    };
     if (stage.contrast.size > 200) stage.contrast.clear();
-    stage.contrast.set(layer.id + key, light);
+    stage.contrast.set(layer.id + key, tones);
   }
-  return light ? coverTonesDark(project.palette) : coverTones(project.palette);
+  return tones;
 }
 
 function textColour(p, tones) {
@@ -1259,6 +1272,35 @@ function paintLens(stage, lens, m) {
 }
 
 /**
+ * How close to a middling grey the glass under a card is: 1 at the worst
+ * middle, 0 for anything clearly dark or light. Read from the glass's own
+ * pixels on a coarse grid, and kept until the card or its backdrop changes.
+ */
+function middling(stage, m, w, h) {
+  const src = stage.glassPixels;
+  if (!src) return 0;
+  const key = [stage.glassKey, Math.round(m.e), Math.round(m.f), Math.round(w), Math.round(h)].join();
+  if (stage.middlingKey === key) return stage.middlingValue;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < 12; i++) {
+    for (let j = 0; j < 12; j++) {
+      const x = Math.min(stage.width - 1, Math.max(0, Math.round(m.e + ((i + 0.5) / 12 - 0.5) * w)));
+      const y = Math.min(stage.height - 1, Math.max(0, Math.round(m.f + ((j + 0.5) / 12 - 0.5) * h)));
+      const o = (y * stage.width + x) * 4;
+      sum += luminance([src[o], src[o + 1], src[o + 2]]);
+      n++;
+    }
+  }
+  // Relative luminance 0.18 is where white and black words read equally
+  // badly; the further from it, the less help is needed.
+  const value = Math.max(0, 1 - Math.abs(sum / n - 0.18) / 0.18);
+  stage.middlingKey = key;
+  stage.middlingValue = value;
+  return value;
+}
+
+/**
  * The panel the player sits on, made as Apple's Liquid Glass: a clear pane
  * that lets the picture through, bends it at a rounded rim like a lens, takes
  * a breath of the cover's colour, and catches the light along its edge.
@@ -1318,8 +1360,10 @@ function drawCard(ctx, layer, project, t, stage) {
     c.save();
     shape();
     c.clip();
-    // A touch deeper than glass strictly needs, so pale words on it hold.
-    c.fillStyle = withAlpha(tones.deep, 0.18);
+    // Deeper over a middling backdrop, where neither pale nor dark words
+    // would stand out on clear glass: the pane gives the words something to
+    // stand on, as Apple's glass does under its labels.
+    c.fillStyle = withAlpha(tones.deep, 0.18 + 0.24 * middling(stage, m, w, h));
     c.fillRect(-w / 2, -h / 2, w, h);
     c.fillStyle = 'rgba(255, 255, 255, 0.05)';
     c.fillRect(-w / 2, -h / 2, w, h);

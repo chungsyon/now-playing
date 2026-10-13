@@ -445,6 +445,11 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.19.2** - Readable on in-between backgrounds too. Each line's colour is
+  pushed lighter or darker, keeping its hue, until it clears the usual
+  reading contrast (4.5:1, 7:1 for the main ink) against what is actually
+  behind it. The glass card deepens its tint over a middling backdrop, where
+  neither pale nor dark words would stand out on clear glass.
 - **0.19.1** - Bookmark's heading reads "Now playing", larger.
 - **0.19.0** - Words, the bar and the buttons pick their colour from what is
   behind them: the slide under each is measured, and over anything bright
