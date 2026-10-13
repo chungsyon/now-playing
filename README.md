@@ -445,6 +445,12 @@ architecture is built expecting all of them.
 
 ## Changelog
 
+- **0.16.0** - Liquid Glass. The card is now a clear pane whose rounded rim
+  works like a lens: every pixel of the rim is bent by Snell's law through a
+  squircle-shaped edge, red, green and blue bend by slightly different
+  amounts for a faint rainbow fringe, and a highlight follows the edge's
+  angle to a light above and to the left. New cards are much clearer (glass
+  blur 12 instead of 30).
 - **0.15.0** - Glassier glass: the backdrop is saturated and brightened, bends
   near the rim as a thick pane would, and the card has a sharp specular line
   along the top, a fainter one along the bottom, a brighter rim, a diagonal
@@ -452,12 +458,6 @@ architecture is built expecting all of them.
   corners reshape it freely, and Width and Height sliders size it. On the
   keyframe strips a tap on empty space adds a keyframe, a tap on one picks
   it, and Delete removes the picked one.
-- **0.16.0** - Liquid Glass. The card is now a clear pane whose rounded rim
-  works like a lens: every pixel of the rim is bent by Snell's law through a
-  squircle-shaped edge, red, green and blue bend by slightly different
-  amounts for a faint rainbow fringe, and a highlight follows the edge's
-  angle to a light above and to the left. New cards are much clearer (glass
-  blur 12 instead of 30).
 - **0.14.0** - The glass card's corner roundness and blur are sliders (and
   keyframeable) under Layers while the card is on. A clean-up pass: Animate
   comes first when a layer is selected, the sheet keeps its place when it
