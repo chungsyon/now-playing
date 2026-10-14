@@ -1,6 +1,6 @@
 /** Run with: node js/gestures.test.mjs */
 import assert from 'node:assert/strict';
-import { pullTo, pullAngle, placeMembers, handleAt, layerBounds, fitToSlide, setCard } from './gestures.js';
+import { pullTo, pullAngle, placeMembers, handleAt, layerBounds, selectionBounds, fitToSlide, setCard } from './gestures.js';
 import { createProject, movesWith, valueAt, isKeyed } from './model.js';
 
 const near = (a, b, slack = 1e-9) => assert.ok(Math.abs(a - b) <= slack, `${a} != ${b}`);
@@ -74,7 +74,9 @@ near(members[0].layer.props.scale, members[0].scale * 0.5);
 // A mouse cannot pinch, so the four dots are grabbable. These check that the
 // grabbable area is where the dot is drawn, including on a turned layer.
 {
+  // One layer on its own; the group's box is checked below.
   const p = createProject({ template: 'vinyl' });
+  p.grouped = false;
   const st = { width: 1080, height: 1350 };
   const sleeve = p.layers.find(l => l.type === 'cover');
   const b = layerBounds(sleeve, p, st);
@@ -94,6 +96,7 @@ near(members[0].layer.props.scale, members[0].scale * 0.5);
   // so a quarter turn puts a corner back where a corner was; the progress
   // bar is long and thin, which is what shows the difference.
   const wide = createProject({ template: 'player' });
+  wide.grouped = false;
   const bar = wide.layers.find(l => l.type === 'progressBar');
   const flat = layerBounds(bar, wide, st);
   const wasCorner = { x: flat.cx + flat.w / 2, y: flat.cy + flat.h / 2 };
@@ -110,6 +113,22 @@ near(members[0].layer.props.scale, members[0].scale * 0.5);
   assert.equal(handleAt(sleeve, p, st, corner.x, corner.y), null, 'locked');
   sleeve.locked = false;
   assert.equal(handleAt(null, p, st, corner.x, corner.y), null, 'nothing selected');
+}
+
+// Moving together, whichever piece is selected, the box is the whole group's.
+{
+  const p = createProject({ template: 'window' });
+  const st = { width: 1080, height: 1350 };
+  const pane = p.layers.find(l => l.type === 'window');
+  const title = p.layers.find(l => l.type === 'text');
+  const group = selectionBounds(pane, p, st);
+  assert.deepEqual(selectionBounds(title, p, st), group, 'same box from any member');
+  const own = layerBounds(pane, p, st);
+  assert.ok(group.h > own.h, 'bigger than the window alone');
+  const corner = { x: group.cx + group.w / 2, y: group.cy + group.h / 2 };
+  assert.equal(handleAt(title, p, st, corner.x, corner.y), 'scale', 'group corner');
+  p.grouped = false;
+  assert.deepEqual(selectionBounds(pane, p, st), own, 'on its own, its own box');
 }
 
 // Grouping off leaves one layer on its own.

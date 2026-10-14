@@ -80,7 +80,7 @@ function turnReach(stage) {
  */
 export function handleAt(layer, project, stage, x, y, t = 0) {
   if (!layer || layer.locked || !layer.visible) return null;
-  const b = layerBounds(layer, project, stage, t);
+  const b = selectionBounds(layer, project, stage, t);
 
   // Into the box's own frame, so a turned box is still four square corners.
   const angle = (-b.rotation * Math.PI) / 180;
@@ -230,6 +230,35 @@ export function layerBounds(layer, project, stage, t = 0) {
     cx: cx + shift * Math.cos(turn) - drop * Math.sin(turn),
     cy: cy + shift * Math.sin(turn) + drop * Math.cos(turn),
     w, h, rotation,
+  };
+}
+
+/**
+ * The box that is selected when this layer is. With Move together on that
+ * is the whole group, upright, since the whole group is what moves; on its
+ * own it is the layer's own box.
+ */
+export function selectionBounds(layer, project, stage, t = 0) {
+  const members = movesWith(project, layer);
+  if (members.length < 2) return layerBounds(layer, project, stage, t);
+  let left = Infinity;
+  let top = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const member of members) {
+    const b = layerBounds(member, project, stage, t);
+    const turn = (b.rotation * Math.PI) / 180;
+    // Half the turned box's reach along each axis.
+    const rx = (Math.abs(b.w * Math.cos(turn)) + Math.abs(b.h * Math.sin(turn))) / 2;
+    const ry = (Math.abs(b.w * Math.sin(turn)) + Math.abs(b.h * Math.cos(turn))) / 2;
+    left = Math.min(left, b.cx - rx);
+    right = Math.max(right, b.cx + rx);
+    top = Math.min(top, b.cy - ry);
+    bottom = Math.max(bottom, b.cy + ry);
+  }
+  return {
+    cx: (left + right) / 2, cy: (top + bottom) / 2,
+    w: right - left, h: bottom - top, rotation: 0,
   };
 }
 
@@ -484,13 +513,17 @@ export function attachGestures(element, api) {
     // happened to sit near the group's middle would otherwise have enormous
     // leverage, a few pixels of movement doubling everything. The rest of
     // the group still follows, anchored on the one you are holding.
+    // Moving together, the handle is on the group's box, so it is the
+    // group's middle that stays put.
     const stage = api.getStage();
-    const px = base.lead.x * stage.width;
-    const py = base.lead.y * stage.height;
+    const box = base.members.length > 1
+      ? selectionBounds(layer, api.getProject(), stage, base.t) : null;
+    const px = box ? box.cx : base.lead.x * stage.width;
+    const py = box ? box.cy : base.lead.y * stage.height;
     start = {
       ...base,
-      pivotX: base.lead.x,
-      pivotY: base.lead.y,
+      pivotX: px / stage.width,
+      pivotY: py / stage.height,
       // On its own, a card's corner changes its width and height apart, so
       // its shape is whatever you drag it to. Moving together, the corner
       // resizes the whole arrangement like any other layer's does.
@@ -518,7 +551,7 @@ export function attachGestures(element, api) {
     if (grab === 'rotate') { element.style.cursor = 'grab'; return; }
     if (grab === 'scale') {
       // Which way the arrow lies: the corner's own diagonal.
-      const b = layerBounds(layer, project, stage, now());
+      const b = selectionBounds(layer, project, stage, now());
       const same = (point.x - b.cx) * (point.y - b.cy) >= 0;
       element.style.cursor = same ? 'nwse-resize' : 'nesw-resize';
       return;
@@ -559,8 +592,11 @@ export function attachGestures(element, api) {
       // everything else, so otherwise almost every touch on it would land on
       // the cover or the words instead.
       const held = selectedLayer();
-      const keepCard = !grabbed && held && PANES.has(held.type)
-        && inside(layerBounds(held, api.getProject(), api.getStage(), now()), point.x, point.y);
+      // Moving together, a touch anywhere in the group keeps the group.
+      const project = api.getProject();
+      const keepCard = !grabbed && held
+        && (PANES.has(held.type) || movesWith(project, held).length > 1)
+        && inside(selectionBounds(held, project, api.getStage(), now()), point.x, point.y);
       if (!grabbed && !keepCard) {
         const hit = layerAt(api.getProject(), api.getStage(), point.x, point.y, now());
         api.onSelect(hit ? hit.id : null);

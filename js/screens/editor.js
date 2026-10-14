@@ -18,7 +18,7 @@ import {
 import { EFFECTS, makeEffect } from '../effects.js';
 import { Stage, render, FONT_CHOICES, CORNER_SHAPES } from '../render.js';
 import { FPS, bitrateFor } from '../export.js';
-import { attachGestures, layerBounds, handleRadius, fitToSlide, setCard } from '../gestures.js';
+import { attachGestures, selectionBounds, handleRadius, fitToSlide, setCard } from '../gestures.js';
 import { putStyle } from '../db.js';
 import { asRoomColour, dedupeHex } from '../color.js';
 
@@ -210,9 +210,17 @@ export async function enter(root, app) {
       event.preventDefault();
       return;
     }
-    if (event.key === 'Escape' && pickedKeys) {
-      pickedKeys = null;
-      for (const refresh of keyRefreshers) refresh();
+    // Escape lets go of everything: picked keyframes and the selection.
+    if (event.key === 'Escape') {
+      if (pickedKeys) {
+        pickedKeys = null;
+        for (const refresh of keyRefreshers) refresh();
+      }
+      if (app.state.selectedLayerId) {
+        app.state.selectedLayerId = null;
+        if (activeTab === 'layer') buildSheet(app, true);
+        drawOnce(app);
+      }
       return;
     }
 
@@ -654,12 +662,11 @@ function drawSelection(app, t) {
   const layer = findLayer(app.state.project, app.state.selectedLayerId);
   if (!layer || layer.locked || !layer.visible) return;
 
-  drawGroupBox(app, layer, t);
   drawGuides(app, t);
 
   // The same box gestures.js hit-tests, so a corner dot is grabbable exactly
-  // where it is drawn.
-  const { cx, cy, w, h, rotation } = layerBounds(layer, app.state.project, stage, t);
+  // where it is drawn. Moving together, it is round the whole group.
+  const { cx, cy, w, h, rotation } = selectionBounds(layer, app.state.project, stage, t);
 
   ctx.save();
   ctx.translate(cx, cy);
@@ -679,38 +686,6 @@ function drawSelection(app, t) {
     ctx.arc((hx * w) / 2, (hy * h) / 2, handle, 0, Math.PI * 2);
     ctx.fill();
   }
-  ctx.restore();
-}
-
-/**
- * A faint box round everything that will move with this layer, so it is
- * obvious before you touch it that the furniture travels as one piece.
- * Only drawn when there is more than one thing in it.
- */
-function drawGroupBox(app, layer, t) {
-  const members = movesWith(app.state.project, layer);
-  if (members.length < 2) return;
-
-  let left = Infinity;
-  let top = Infinity;
-  let right = -Infinity;
-  let bottom = -Infinity;
-  for (const member of members) {
-    // The widest the box can be once turned: good enough for a hint.
-    const b = layerBounds(member, app.state.project, stage, t);
-    const reach = Math.max(b.w, b.h) / 2;
-    left = Math.min(left, b.cx - reach);
-    right = Math.max(right, b.cx + reach);
-    top = Math.min(top, b.cy - reach);
-    bottom = Math.max(bottom, b.cy + reach);
-  }
-
-  const ctx = overlayCtx;
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-  ctx.lineWidth = Math.max(1, stage.width * 0.002);
-  ctx.setLineDash([stage.width * 0.012, stage.width * 0.01]);
-  ctx.strokeRect(left, top, right - left, bottom - top);
   ctx.restore();
 }
 
