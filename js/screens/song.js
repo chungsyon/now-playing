@@ -39,6 +39,7 @@ export async function enter(root, app) {
   let linkFailed = false;
   let via = null;
   let notice = '';
+  let failed = false;     // the search itself broke, so offer it again
   let searching = false;
   let runId = 0;
   let timer = null;
@@ -77,12 +78,14 @@ export async function enter(root, app) {
       linkFailed = false;
       via = null;
       notice = '';
+      failed = false;
       searching = false;
       paint();
       return;
     }
 
     searching = true;
+    failed = false;
     paint();
 
     try {
@@ -107,9 +110,10 @@ export async function enter(root, app) {
       unsupported = null;
       linkFailed = false;
       via = null;
+      failed = true;
       notice = error.message === 'offline'
         ? 'No connection. Song search needs one; everything else works offline.'
-        : 'Something didn\'t come through. Try once more.';
+        : 'Something didn\'t come through.';
     } finally {
       if (mine === runId) {
         searching = false;
@@ -136,6 +140,7 @@ export async function enter(root, app) {
     if (chosen) paintChosen(stage, app, { onSearchAgain: () => { app.state.browsing = true; paint(); } });
     else paintChoosing(stage, app, {
       results, artistName, label, noMatch, unsupported, linkFailed, via, notice, searching, onPick: pick,
+      onRetry: failed ? search : null,
     });
     paintSettings(stage, app, search);
   }
@@ -194,7 +199,7 @@ function songLine(song) {
 // ---------------------------------------------------------------------------
 
 function paintChoosing(stage, app, {
-  results, artistName, label, noMatch, unsupported, linkFailed, via, notice, searching, onPick,
+  results, artistName, label, noMatch, unsupported, linkFailed, via, notice, searching, onPick, onRetry,
 }) {
   // The heading names the album or performer a pasted link opened, or whose
   // catalogue an artist search found, because it may not be the one you meant.
@@ -204,7 +209,10 @@ function paintChoosing(stage, app, {
   stage.append(section(sectionHead('Results', reading),
     searching ? h('div', { class: 'spinner', role: 'status', 'aria-label': 'Searching' }) : null,
     notice ? h('p', { class: 'footnote', style: { paddingTop: '0', paddingBottom: '8px' } }, notice) : null,
-    buildResults(results, { searching, noMatch, unsupported, linkFailed }, app, onPick),
+    onRetry && !searching
+      ? h('button', { class: 'btn btn--block', type: 'button', onclick: onRetry }, 'Try Again')
+      : null,
+    onRetry ? null : buildResults(results, { searching, noMatch, unsupported, linkFailed }, app, onPick),
     // A link from a service we cannot look up became a search, so say that
     // rather than letting it look like an exact answer.
     via && !searching && results.length > 0

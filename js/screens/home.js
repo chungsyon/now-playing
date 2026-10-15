@@ -148,7 +148,7 @@ async function fillDrafts(box, app, label) {
       h('span', { class: 'row__main' },
         h('span', { class: 'row__title' }, draft.project.song.title || 'No song yet'),
         h('span', { class: 'row__sub' },
-          `${draft.project.song.artist || 'Waiting for a song'} · ${when(draft.updatedAt)}`),
+          `${draft.project.song.title ? draft.project.song.artist || 'Unknown artist' : 'Waiting for a song'} · ${when(draft.updatedAt)}`),
       ),
       h('span', { class: 'row__value' }, `${draft.project.loopSeconds.toFixed(0)}s`),
     );
