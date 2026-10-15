@@ -60,10 +60,14 @@ struct SlidePanel: View {
                     Button("Edit Colour Window") { engine.pick(colourWindow.id) }
                 }
                 Toggle("Move together", isOn: model.binding(\.grouped, true))
+                ValueSlider(label: "Opacity",
+                            value: Binding(get: { project.overlayOpacity ?? 1 },
+                                           set: { value in model.edit { $0.overlayOpacity = value } }),
+                            range: 0...1, step: 0.01, format: percent)
             } header: {
                 Text("On the slide")
             } footer: {
-                Text("With Move together on, everything on the photo moves and resizes as one.")
+                Text("With Move together on, everything on the photo moves and resizes as one. Opacity fades all of it, leaving the photo.")
             }
 
             LayerList(engine: engine)

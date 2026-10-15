@@ -555,6 +555,9 @@ struct Project: Codable, Hashable {
     var showCover = true
     /// The furniture moves as one arrangement.
     var grouped = true
+    /// Fades everything on the photo together. Optional so drafts saved
+    /// before it still open; nil means fully there.
+    var overlayOpacity: Double?
     /// Colours pulled from the cover or the photo.
     var palette: [String] = []
     var layers: [Layer]

@@ -97,13 +97,28 @@ export async function enter(root, app) {
     `${app.state.project.aspect.w}×${app.state.project.aspect.h}`);
 
   const zoomRead = h('span', { class: 'zoom__read' }, `${Math.round(zoom * 100)}%`);
-  const zoomBy = step => {
-    const next = ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + step))];
-    if (next === zoom) return;
+  // Any amount from the first step to the last. Given a point on screen, it
+  // stays under the cursor, and mid-pinch only the size changes, stretching
+  // the picture: it is drawn sharp again once the pinch rests.
+  let sharpen = null;
+  const zoomTo = (next, at = null) => {
+    next = Math.max(ZOOMS[0], Math.min(ZOOMS[ZOOMS.length - 1], next));
+    if (Math.abs(next - zoom) < 0.001) return;
+    const before = stagewrap.getBoundingClientRect();
     zoom = next;
     zoomRead.textContent = `${Math.round(zoom * 100)}%`;
-    buildStage(app, preview);
+    buildStage(app, preview, Boolean(at));
+    if (!at) return;
+    const after = stagewrap.getBoundingClientRect();
+    stageArea.scrollLeft += after.left + (at.x - before.left) / before.width * after.width - at.x;
+    stageArea.scrollTop += after.top + (at.y - before.top) / before.height * after.height - at.y;
+    clearTimeout(sharpen);
+    sharpen = setTimeout(() => buildStage(app, preview), 150);
   };
+  // A pinch can leave the zoom between steps; the buttons go to the next one.
+  const zoomBy = step => zoomTo(step > 0
+    ? ZOOMS.find(z => z > zoom + 0.01) ?? zoom
+    : ZOOMS.findLast(z => z < zoom - 0.01) ?? zoom);
   const zoomControl = h('div', { class: 'zoom', role: 'group', 'aria-label': 'Zoom' },
     h('button', { class: 'zoom__btn', type: 'button', 'aria-label': 'Zoom out', onclick: () => zoomBy(-1) }, '\u2212'),
     zoomRead,
@@ -192,9 +207,38 @@ export async function enter(root, app) {
     stageArea.scrollLeft = panning.left - (event.clientX - panning.x);
     stageArea.scrollTop = panning.top - (event.clientY - panning.y);
   });
+  // Fingers on the slide, so a touch pinch is left to the layers below.
+  const touching = new Set();
+  overlay.addEventListener('pointerdown', event => {
+    if (event.pointerType === 'touch') touching.add(event.pointerId);
+  });
   for (const type of ['pointerup', 'pointercancel']) {
-    overlay.addEventListener(type, () => { panning = null; });
+    overlay.addEventListener(type, event => { panning = null; touching.delete(event.pointerId); });
   }
+
+  // A trackpad pinch arrives as a wheel with Ctrl held, and Ctrl or Cmd with
+  // a mouse wheel zooms too. Any other wheel scrolls the zoomed view as
+  // usual: up and down, and sideways with Shift or two fingers.
+  stageArea.addEventListener('wheel', event => {
+    if (!event.ctrlKey && !event.metaKey) return;
+    event.preventDefault();
+    const dy = event.deltaY * (event.deltaMode === 1 ? 16 : 1);
+    zoomTo(zoom * Math.exp(-Math.max(-25, Math.min(25, dy)) * 0.01),
+      { x: event.clientX, y: event.clientY });
+  }, { passive: false });
+  // Safari sends a trackpad pinch as gesture events instead, and would zoom
+  // the whole page with it.
+  let pinchFrom = 1;
+  stageArea.addEventListener('gesturestart', event => {
+    if (touching.size) return;
+    event.preventDefault();
+    pinchFrom = zoom;
+  });
+  stageArea.addEventListener('gesturechange', event => {
+    if (touching.size) return;
+    event.preventDefault();
+    zoomTo(pinchFrom * event.scale, { x: event.clientX, y: event.clientY });
+  });
 
   // Arrow keys nudge the selection. Listening on the window rather than the
   // canvas means it works without clicking the slide first, which is what
@@ -281,7 +325,8 @@ export function rebuild(app) {
 // The preview canvas
 // ---------------------------------------------------------------------------
 
-function buildStage(app, preview) {
+/** `quick` only resizes the slide on screen, stretching what is drawn. */
+function buildStage(app, preview, quick = false) {
   const project = app.state.project;
   const wrap = preview.parentElement;
   const area = wrap.parentElement;
@@ -311,6 +356,7 @@ function buildStage(app, preview) {
   wrap.style.height = `${cssHeight}px`;
   area.scrollLeft = middle.x * area.scrollWidth - area.clientWidth / 2;
   area.scrollTop = middle.y * area.scrollHeight - area.clientHeight / 2;
+  if (quick) return;
 
   // Draw at the screen's own sharpness (3x on an iPhone), never past the
   // slide's real size. Everything is stored as a fraction, so this changes
@@ -963,8 +1009,15 @@ function slideTab(box, app) {
         card ? editRow('Edit glass card', card) : null,
         colourWindow ? editRow('Edit colour window', colourWindow) : null,
         toggle('Move together', project.grouped !== false, on => { project.grouped = on; }),
+        h('div', { class: 'group--pad' }, sliderRow({
+          label: 'Opacity', min: 0, max: 1, step: 0.01,
+          value: project.overlayOpacity ?? 1,
+          format: value => `${Math.round(value * 100)}%`,
+          onInput: value => { project.overlayOpacity = value; app.save(); drawOnce(app); },
+        })),
       ),
-      footnote('With Move together on, everything on the photo moves and resizes as one.'),
+      footnote('With Move together on, everything on the photo moves and resizes as one. '
+        + 'Opacity fades all of it, leaving the photo.'),
     ),
 
     layerList(app),

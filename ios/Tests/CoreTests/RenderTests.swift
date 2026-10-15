@@ -118,6 +118,19 @@ func everyTemplateDraws(_ template: TemplateID) throws {
     }
 }
 
+@Test func opacityZeroLeavesOnlyThePhoto() {
+    let (project, media) = sampleProject(.player)
+    var faded = project
+    faded.overlayOpacity = 0
+    var bare = project
+    for i in bare.layers.indices where bare.layers[i].type != .photo { bare.layers[i].visible = false }
+    let a = Stage(width: 270, height: 338, media: media)
+    let b = Stage(width: 270, height: 338, media: media)
+    renderSlide(a, faded, 1)
+    renderSlide(b, bare, 1)
+    #expect(pixels(a) == pixels(b))
+}
+
 @Test func exportIsSilentH264() async throws {
     var (project, media) = sampleProject(.player)
     project.loopSeconds = 2

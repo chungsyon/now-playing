@@ -481,7 +481,10 @@ export function render(stage, project, t) {
     if (!layer.visible) continue;
     if (layer.type === 'cover' && !project.showCover) continue;
 
-    const opacity = valueAt(layer.props.opacity, t);
+    // One slider fades everything on the photo at once, keeping each
+    // layer's own opacity relative to the rest. Older drafts have none.
+    const opacity = valueAt(layer.props.opacity, t)
+      * (layer.type === 'photo' ? 1 : project.overlayOpacity ?? 1);
     if (opacity <= 0.001) continue;
 
     // The scratch canvas is only needed when something has to see the layer

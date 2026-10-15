@@ -383,6 +383,7 @@ export function createProject({ aspect, template = 'vinyl', song = null } = {}) 
       h: TEMPLATES[template].fitsAnyShape ? chosen.h : 1350 },
     showCover: true,
     grouped: true,          // the furniture moves as one arrangement
+    overlayOpacity: 1,      // fades everything on the photo together
     palette: [],            // colours pulled from the cover or the photo
     layers: TEMPLATES[template].build(chosen),
   };
