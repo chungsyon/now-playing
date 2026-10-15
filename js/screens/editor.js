@@ -1009,11 +1009,11 @@ function slideTab(box, app) {
         card ? editRow('Edit glass card', card) : null,
         colourWindow ? editRow('Edit colour window', colourWindow) : null,
         toggle('Move together', project.grouped !== false, on => { project.grouped = on; }),
-        h('div', { class: 'group--pad' }, sliderRow({
-          label: 'Opacity', min: 0, max: 1, step: 0.01,
-          value: project.overlayOpacity ?? 1,
+        h('div', { class: 'group--pad' }, keyedSlider(app, {
+          label: 'Opacity',
+          holder: project, key: 'overlayOpacity',
+          min: 0, max: 1, step: 0.01, fallback: 1,
           format: value => `${Math.round(value * 100)}%`,
-          onInput: value => { project.overlayOpacity = value; app.save(); drawOnce(app); },
         })),
       ),
       footnote('With Move together on, everything on the photo moves and resizes as one. '

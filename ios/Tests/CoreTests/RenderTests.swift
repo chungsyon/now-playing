@@ -121,7 +121,7 @@ func everyTemplateDraws(_ template: TemplateID) throws {
 @Test func opacityZeroLeavesOnlyThePhoto() {
     let (project, media) = sampleProject(.player)
     var faded = project
-    faded.overlayOpacity = 0
+    faded.overlayOpacity = .keyframes([Keyframe(t: 0, value: 1), Keyframe(t: 1, value: 0)])
     var bare = project
     for i in bare.layers.indices where bare.layers[i].type != .photo { bare.layers[i].visible = false }
     let a = Stage(width: 270, height: 338, media: media)

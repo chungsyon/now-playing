@@ -60,10 +60,8 @@ struct SlidePanel: View {
                     Button("Edit Colour Window") { engine.pick(colourWindow.id) }
                 }
                 Toggle("Move together", isOn: model.binding(\.grouped, true))
-                ValueSlider(label: "Opacity",
-                            value: Binding(get: { project.overlayOpacity ?? 1 },
-                                           set: { value in model.edit { $0.overlayOpacity = value } }),
-                            range: 0...1, step: 0.01, format: percent)
+                KeyedSlider(engine: engine, label: "Opacity", paths: [.overlayOpacity],
+                            range: 0...1, step: 0.01, fallback: 1, format: percent)
             } header: {
                 Text("On the slide")
             } footer: {

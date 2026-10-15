@@ -555,9 +555,9 @@ struct Project: Codable, Hashable {
     var showCover = true
     /// The furniture moves as one arrangement.
     var grouped = true
-    /// Fades everything on the photo together. Optional so drafts saved
-    /// before it still open; nil means fully there.
-    var overlayOpacity: Double?
+    /// Fades everything on the photo together, and can be keyframed.
+    /// Optional so drafts saved before it still open; nil means fully there.
+    var overlayOpacity: Prop?
     /// Colours pulled from the cover or the photo.
     var palette: [String] = []
     var layers: [Layer]
@@ -613,6 +613,8 @@ struct Project: Codable, Hashable {
             case let .effect(id, index, param):
                 guard let l = layer(id), l.effects.indices.contains(index) else { return nil }
                 return l.effects[index].params[param]
+            case .overlayOpacity:
+                return overlayOpacity
             }
         }
         set {
@@ -623,6 +625,8 @@ struct Project: Codable, Hashable {
             case let .effect(id, index, param):
                 guard let i = self.index(of: id), layers[i].effects.indices.contains(index) else { return }
                 layers[i].effects[index].params[param] = newValue
+            case .overlayOpacity:
+                overlayOpacity = newValue
             }
         }
     }
@@ -632,6 +636,7 @@ struct Project: Codable, Hashable {
 enum PropPath: Hashable {
     case layer(String, NumKey)
     case effect(String, Int, String)
+    case overlayOpacity
 }
 
 /// How many whole turns the record makes over one loop. The loop only closes

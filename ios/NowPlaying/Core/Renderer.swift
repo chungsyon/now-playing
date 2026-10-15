@@ -256,7 +256,7 @@ func renderSlide(_ stage: Stage, _ project: Project, _ t: Double) {
         if layer.type == .cover && !project.showCover { continue }
         // One slider fades everything on the photo, keeping each layer's
         // own opacity relative to the rest.
-        let opacity = layer.props.opacity.at(t) * (layer.type == .photo ? 1 : project.overlayOpacity ?? 1)
+        let opacity = layer.props.opacity.at(t) * (layer.type == .photo ? 1 : project.overlayOpacity?.at(t) ?? 1)
         if opacity <= 0.001 { continue }
 
         // The scratch bitmap is only needed when something has to see the
