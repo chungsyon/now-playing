@@ -13,6 +13,8 @@ import UIKit
 final class PreviewSurfaceView: UIView {
     weak var engine: EditorEngine?
     private let imageLayer = CALayer()
+    /// Never acts; it only exists so that swiping back waits for it, below.
+    private let holder = UIPanGestureRecognizer()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -22,12 +24,28 @@ final class PreviewSurfaceView: UIView {
         imageLayer.magnificationFilter = .linear
         imageLayer.minificationFilter = .trilinear
         layer.addSublayer(imageLayer)
+        holder.cancelsTouchesInView = false
+        holder.delaysTouchesBegan = false
+        holder.delaysTouchesEnded = false
+        addGestureRecognizer(holder)
         isAccessibilityElement = true
         accessibilityLabel = "Preview of the slide"
         accessibilityTraits = .image
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Since iOS 26 a swipe right anywhere goes back a screen, which took any
+    /// rightward drag on the slide away from it. A drag that starts on the
+    /// slide belongs to the slide; everywhere else still swipes back.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        var responder: UIResponder? = self
+        while let next = responder?.next, !(next is UINavigationController) { responder = next }
+        guard let navigation = responder?.next as? UINavigationController else { return }
+        navigation.interactivePopGestureRecognizer?.require(toFail: holder)
+        if #available(iOS 26, *) { navigation.interactiveContentPopGestureRecognizer?.require(toFail: holder) }
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()

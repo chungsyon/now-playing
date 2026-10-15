@@ -99,11 +99,11 @@ struct SongPanel: View {
                             Text([song.artist, song.album, song.year].filter { !$0.isEmpty }.joined(separator: " · ")
                                 .ifEmpty("Choose one to begin"))
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.secondary)
                                 .lineLimit(1)
                         }
                         Spacer()
-                        Text(song.title.isEmpty ? "Choose" : "Change").foregroundStyle(.secondary)
+                        Text(song.title.isEmpty ? "Choose" : "Change").foregroundStyle(Color.secondary)
                         Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
                     }
                 }

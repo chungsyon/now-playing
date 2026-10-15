@@ -35,6 +35,7 @@ private func hit(_ title: String, _ artist: String, _ album: String = "", source
     #expect(flatten("너랑 나") == "너랑나")
     #expect(versionTag(hit("Creep (Acoustic)", "Radiohead")) == "Acoustic")
     #expect(versionTag(hit("Song", "A", "Live at Wembley")) == "Live")
+    #expect(versionTag(hit("Blinding Lights (Remix)", "The Weeknd")) == "Remix")
     // Apple wins ties: it carries the year.
     let merged = dedupe([hit("Song", "A", source: .deezer), hit("song", "a", source: .itunes)])
     #expect(merged.count == 1 && merged[0].source == .itunes)

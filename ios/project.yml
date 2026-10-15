@@ -38,6 +38,11 @@ targets:
         # Set your team here, or pick it in Xcode under Signing & Capabilities.
         DEVELOPMENT_TEAM: ""
         ENABLE_PREVIEWS: YES
+      # The slide is drawn pixel by pixel on the CPU, which unoptimised Swift
+      # does four times slower. Run from Xcode should feel like the real app.
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: -O
     info:
       path: NowPlaying/Info.plist
       properties:

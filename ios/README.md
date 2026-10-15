@@ -104,9 +104,8 @@ Your steps:
    (the page is in this repo; push to publish it). **Support URL:** the
    repository's Issues page works.
 4. **App Privacy:** answer "Data Not Collected".
-5. **Screenshots:** in the iPhone 16 Pro Max (6.9") simulator, make a slide
-   and press ⌘S on Home, Song, Editor and Export. That size covers every
-   iPhone.
+5. **Screenshots:** the five in `Screenshots/` are ready (6.9", which
+   covers every iPhone). `AppStore.md` says how to take them again.
 6. In Xcode: choose **Any iOS Device**, then **Product → Archive** →
    **Distribute App** → **App Store Connect**.
 7. Back in App Store Connect, pick the build, fill in the description and

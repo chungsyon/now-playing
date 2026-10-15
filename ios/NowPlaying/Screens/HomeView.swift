@@ -121,7 +121,7 @@ struct HomeView: View {
                                 Text(style.name).foregroundStyle(Color.primary)
                                 Text("\(style.project.template.label) · \(when(style.updatedAt))")
                                     .font(.footnote)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(Color.secondary)
                             }
                         }
                         .swipeActions {
@@ -195,15 +195,15 @@ private struct DraftRow: View {
                     Text(draft.project.song.title.ifEmpty("No song yet"))
                         .foregroundStyle(Color.primary)
                         .lineLimit(1)
-                    Text("\(draft.project.song.artist.ifEmpty("Waiting for a song")) · \(when(draft.updatedAt))")
+                    Text("\(draft.project.song.title.isEmpty ? "Waiting for a song" : draft.project.song.artist.ifEmpty("Unknown artist")) · \(when(draft.updatedAt))")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondary)
                         .lineLimit(1)
                 }
                 Spacer()
                 Text("\(Int(draft.project.loopSeconds))s")
                     .font(.footnote.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.secondary)
             }
         }
         .task(id: draft.id) { thumbnail = await model.photoThumbnail(draft.id) }

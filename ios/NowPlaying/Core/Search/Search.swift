@@ -89,6 +89,7 @@ func versionTag(_ song: SongHit) -> String {
     if matches(#"\bdemo\b"#, text) { return "Demo" }
     if matches(#"instrumental|\(inst\.?\)|\[inst\.?\]"#, text) { return "Instrumental" }
     if matches(#"\bcover\b"#, text) { return "Cover" }
+    if matches(#"\bremix\b|\bmix\)"#, text) { return "Remix" }
     return "Original"
 }
 

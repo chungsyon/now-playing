@@ -234,14 +234,14 @@ private struct ResultRow: View {
                     Text(hit.title).foregroundStyle(Color.primary).lineLimit(1)
                     Text([hit.artist, hit.album, hit.year].filter { !$0.isEmpty }.joined(separator: " · "))
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondary)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 4)
                 VStack(alignment: .trailing, spacing: 4) {
                     Text(formatTime(hit.durationMs / 1000))
                         .font(.footnote.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.secondary)
                     if !hit.version.isEmpty { Tag(text: hit.version) }
                 }
             }

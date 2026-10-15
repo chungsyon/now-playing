@@ -10,6 +10,8 @@ node_modules/
 *.png
 !assets/icons/*.png
 !ios/NowPlaying/Resources/Assets.xcassets/**/*.png
+!ios/Screenshots/*.png
+!ios/Screenshots/cover.jpg
 
 # Xcode and Swift build output
 ios/.build/

@@ -96,13 +96,25 @@ Answer **"No, we do not collect data from this app"**. The label then reads
 ## Screenshots
 
 Upload the 6.9" set (1320 × 2868) only. Apple scales it for every other
-iPhone. They are in `ios/Screenshots/` after the simulator run:
+iPhone. They are in `ios/Screenshots/`, in order:
 
 1. Home
-2. Song search with results
-3. Editor, Vinyl
-4. Editor, Player
+2. Editor, Vinyl
+3. Editor, Player
+4. Editor, Media
 5. Export
+
+The song in them is made up ("Late Summer Light" by Nora Field) and the
+cover (`Screenshots/cover.jpg`) was drawn for them, so no one else's artwork
+or name is in the listing. To take them again, on the iPhone 18 Pro Max
+simulator, in `ios/`:
+
+```sh
+xcrun simctl addmedia booted Screenshots/cover.jpg   # once per simulator
+TEST_RUNNER_SHOTS=$PWD/Screenshots xcodebuild test -project NowPlaying.xcodeproj \
+  -scheme Screenshots -destination 'platform=iOS Simulator,name=iPhone 18 Pro Max' \
+  -only-testing:NowPlayingUITests/Walkthrough/testScreenshots
+```
 
 ## Publishing from a friend's account
 

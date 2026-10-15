@@ -9,7 +9,8 @@ import UIKit
  ----------
  Plays the loop, draws the preview, and works out what fingers on the slide
  mean. Tap a layer to select it; drag to move, pinch to resize, twist to
- rotate; grab a corner dot to resize, just outside one to turn. Moving
+ rotate; grab a corner dot to resize, just outside one to turn. A pinch that
+ starts on no layer zooms the view instead, about the fingers. Moving
  together, a gesture moves the whole arrangement, and the last little bit of
  every gesture snaps: to the middle, to anything standing still, to clean
  angles. A light tap of haptics says it landed.
@@ -55,6 +56,9 @@ final class EditorEngine {
     var snapped = Snapped()
     /// The preview's own pixel size: what gestures measure in.
     private(set) var stage = StageSize(width: 1080, height: 1350)
+    /// Drawn while a finger is down: a 2x picture costs under half a 3x one,
+    /// so the slide keeps up with the finger. Sharp again when it lifts.
+    private var quick = StageSize(width: 1080, height: 1350)
     /// The slide's size on screen, in points, zoom included.
     private(set) var viewSize: CGSize = .zero
 
@@ -66,6 +70,14 @@ final class EditorEngine {
     @ObservationIgnored private var start: GestureStart?
     @ObservationIgnored private var grabbed: Handle?
     @ObservationIgnored private var panning: (from: CGPoint, pan: CGSize)?
+    /// Where each finger is on the screen, for zooming the view.
+    @ObservationIgnored private var screens: [ObjectIdentifier: CGPoint] = [:]
+    @ObservationIgnored private var pinch: (distance: Double, mid: CGPoint, zoom: CGFloat, pan: CGSize,
+                                            center: CGPoint, base: CGSize)?
+    /// While the view is being pinched it follows the fingers exactly, and the
+    /// picture is stretched rather than redrawn at every size on the way.
+    private(set) var pinching = false
+    @ObservationIgnored private var pendingSize: (size: CGSize, scale: CGFloat)?
     @ObservationIgnored private let snapFeedback = UIImpactFeedbackGenerator(style: .light)
     @ObservationIgnored private let selectFeedback = UISelectionFeedbackGenerator()
 
@@ -100,18 +112,26 @@ final class EditorEngine {
     func setViewSize(_ size: CGSize, scale: CGFloat) {
         guard let project, size.width > 1 else { return }
         viewSize = size
+        if pinching {
+            pendingSize = (size, scale)
+            return
+        }
         let width = min(project.aspect.w, Int((size.width * min(3, scale)).rounded()))
         let height = Int((Double(width) * Double(project.aspect.h) / Double(project.aspect.w)).rounded())
         let next = StageSize(width: Double(width), height: Double(height))
         // Within a few pixels, keep what is there: same picture.
         if abs(next.width - stage.width) > 4 || abs(next.height - stage.height) > 4 { stage = next }
+        let quickWidth = min(Int(stage.width), Int((size.width * min(2, scale)).rounded()))
+        quick = StageSize(width: Double(quickWidth),
+                          height: (Double(quickWidth) * Double(project.aspect.h) / Double(project.aspect.w)).rounded())
         redraw()
     }
 
     func redraw() {
         guard let project, stage.width > 1 else { return }
+        let size = touches.isEmpty ? stage : quick
         renderer.request(.init(project: project, media: model.media, t: model.time,
-                               width: Int(stage.width), height: Int(stage.height)))
+                               width: Int(size.width), height: Int(size.height)))
     }
 
     // MARK: - Time
@@ -166,9 +186,9 @@ final class EditorEngine {
     // MARK: - Zoom
 
     func zoom(by step: Int) {
-        guard let i = Self.zooms.firstIndex(of: zoom) else { return }
-        let next = Self.zooms[max(0, min(Self.zooms.count - 1, i + step))]
-        guard next != zoom else { return }
+        // A pinch can leave the zoom between steps; the buttons go to the next one.
+        let next = step > 0 ? Self.zooms.first { $0 > zoom + 0.01 } : Self.zooms.last { $0 < zoom - 0.01 }
+        guard let next else { return }
         // The view keeps the same middle as it grows or shrinks.
         pan = CGSize(width: pan.width * next / zoom, height: pan.height * next / zoom)
         zoom = next
@@ -249,7 +269,7 @@ final class EditorEngine {
 
     func touchesBegan(_ new: [(ObjectIdentifier, CGPoint, CGPoint)]) {
         guard let project = model.project else { return }
-        for (id, point, _) in new { touches[id] = point }
+        for (id, point, screen) in new { touches[id] = point; screens[id] = screen }
         // Moving something means moving it at one moment, so time stops first.
         pause()
 
@@ -273,8 +293,35 @@ final class EditorEngine {
             if zoom > 1 && model.selectedLayerId == nil, let screen = new.first?.2 {
                 panning = (screen, pan)
             }
+        } else if touches.count == 2 && new.count == 2 {
+            // Both fingers landed at once, as a pinch usually does. It belongs
+            // to what is held, if it is between them, or else to whatever lies
+            // between them or under either one. Nothing there: zoom the view.
+            let p = Array(touches.values)
+            let spots = [CGPoint(x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2)] + p
+            let t = model.time
+            let holding = selectedLayer.map { held in
+                spots.contains { inside(selectionBounds(held, project, stage, t), $0.x, $0.y) }
+            } ?? false
+            if !holding {
+                select(spots.lazy.compactMap { layerAt(project, self.stage, $0.x, $0.y, t) }.first?.id)
+            }
         }
         beginGesture()
+        // Two fingers and nothing to hold: zoom the view.
+        if touches.count == 2 && start == nil { beginPinch() }
+    }
+
+    private func beginPinch() {
+        let s = Array(screens.values)
+        guard s.count == 2, let surface, zoom > 0 else { return }
+        panning = nil
+        pinch = (hypot(s[1].x - s[0].x, s[1].y - s[0].y),
+                 CGPoint(x: (s[0].x + s[1].x) / 2, y: (s[0].y + s[1].y) / 2),
+                 zoom, pan,
+                 surface.convert(CGPoint(x: surface.bounds.midX, y: surface.bounds.midY), to: nil),
+                 CGSize(width: viewSize.width / zoom, height: viewSize.height / zoom))
+        pinching = true
     }
 
     private func beginGesture() {
@@ -323,7 +370,22 @@ final class EditorEngine {
     }
 
     func touchesMoved(_ moved: [(ObjectIdentifier, CGPoint, CGPoint)]) {
-        for (id, point, _) in moved where touches[id] != nil { touches[id] = point }
+        for (id, point, screen) in moved where touches[id] != nil { touches[id] = point; screens[id] = screen }
+
+        if let pinch {
+            let s = Array(screens.values)
+            guard s.count == 2 else { return }
+            let mid = CGPoint(x: (s[0].x + s[1].x) / 2, y: (s[0].y + s[1].y) / 2)
+            let next = max(1, min(Self.zooms.last!, pinch.zoom * hypot(s[1].x - s[0].x, s[1].y - s[0].y) / max(1, pinch.distance)))
+            let k = next / pinch.zoom
+            // The part of the slide that was between the fingers stays between them.
+            let x = mid.x - (pinch.center.x - pinch.pan.width) - (pinch.mid.x - pinch.center.x) * k
+            let y = mid.y - (pinch.center.y - pinch.pan.height) - (pinch.mid.y - pinch.center.y) * k
+            let limit = CGSize(width: pinch.base.width * (next - 1) / 2, height: pinch.base.height * (next - 1) / 2)
+            zoom = next
+            pan = CGSize(width: max(-limit.width, min(limit.width, x)), height: max(-limit.height, min(limit.height, y)))
+            return
+        }
 
         if let panning, let screen = moved.first?.2 {
             let limit = CGSize(width: max(0, viewSize.width - viewSize.width / zoom) / 2,
@@ -408,7 +470,16 @@ final class EditorEngine {
     }
 
     func touchesEnded(_ ended: [ObjectIdentifier]) {
-        for id in ended { touches[id] = nil }
+        for id in ended { touches[id] = nil; screens[id] = nil }
+        if pinch != nil {
+            pinch = nil
+            pinching = false
+            if zoom < 1.05 { zoom = 1; pan = .zero }
+            if let pending = pendingSize {
+                pendingSize = nil
+                setViewSize(pending.size, scale: pending.scale)
+            }
+        }
         if touches.isEmpty {
             start = nil
             grabbed = nil
@@ -417,8 +488,10 @@ final class EditorEngine {
             if snapped.any { snapped = Snapped() }
             redraw()
         } else {
-            // A finger lifted: carry on with what is left.
+            // A finger lifted: carry on with what is left, which, zoomed in
+            // with nothing held, is moving the view.
             panning = nil
+            if zoom > 1 && model.selectedLayerId == nil, let screen = screens.values.first { panning = (screen, pan) }
             beginGesture()
         }
     }

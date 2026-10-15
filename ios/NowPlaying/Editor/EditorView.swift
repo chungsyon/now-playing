@@ -136,7 +136,8 @@ private struct PreviewArea: View {
                 .clipped()
                 .onAppear { engine.setViewSize(size, scale: displayScale) }
                 .onChange(of: size) { _, new in engine.setViewSize(new, scale: displayScale) }
-                .animation(.spring(response: 0.35, dampingFraction: 1), value: engine.zoom)
+                // The buttons spring; a pinch follows the fingers.
+                .animation(engine.pinching ? nil : .spring(response: 0.35, dampingFraction: 1), value: engine.zoom)
             }
         }
         .background(colorScheme == .dark ? Color(white: 0.04) : Color(red: 0.9, green: 0.9, blue: 0.92))
@@ -183,13 +184,13 @@ private struct Transport: View {
 
             HStack(spacing: 0) {
                 Button { engine.zoom(by: -1) } label: { Image(systemName: "minus").frame(width: 30, height: 32) }
-                    .disabled(engine.zoom == 1)
+                    .disabled(engine.zoom <= 1)
                     .accessibilityLabel("Zoom out")
-                Text("\(Int(engine.zoom * 100))%")
+                Text("\(Int((engine.zoom * 100).rounded()))%")
                     .font(.caption.monospacedDigit())
                     .frame(minWidth: 38)
                 Button { engine.zoom(by: 1) } label: { Image(systemName: "plus").frame(width: 30, height: 32) }
-                    .disabled(engine.zoom == EditorEngine.zooms.last)
+                    .disabled(engine.zoom >= EditorEngine.zooms.last!)
                     .accessibilityLabel("Zoom in")
             }
             .buttonStyle(.borderless)

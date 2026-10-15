@@ -159,7 +159,7 @@ struct LayerList: View {
                         .fontWeight(selected ? .semibold : .regular)
                         .foregroundStyle(selected ? Color.accentColor : Color.primary)
                     if !sub.isEmpty {
-                        Text(sub).font(.footnote).foregroundStyle(.secondary)
+                        Text(sub).font(.footnote).foregroundStyle(Color.secondary)
                     }
                 }
                 .opacity(layer.visible ? 1 : 0.45)

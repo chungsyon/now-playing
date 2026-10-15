@@ -145,13 +145,22 @@ func everyTemplateDraws(_ template: TemplateID) throws {
 }
 
 @Test func renderSpeed() {
-    // A frame of the busiest template at preview size should leave room for
-    // thirty a second on a phone; this Mac is a rough guide.
-    let (project, media) = sampleProject(.player)
-    let stage = Stage(width: 1029, height: 1286, media: media)
-    renderSlide(stage, project, 0)
-    let started = Date()
-    for i in 0..<30 { renderSlide(stage, project, Double(i) / 30) }
-    let each = Date().timeIntervalSince(started) / 30 * 1000
-    print("player frame at 1029px: \(String(format: "%.1f", each)) ms")
+    // Dragging a layer at the preview's sharp (3x) and quick (2x) sizes.
+    // A frame should leave room for thirty a second; this Mac is a rough guide.
+    for template in TemplateID.allCases {
+        var (project, media) = sampleProject(template)
+        guard let moved = project.layers.first(where: { $0.type != .photo })?.id else { continue }
+        var line = "\(template.rawValue):"
+        for width in [1080, 720] {
+            let stage = Stage(width: width, height: width * 5 / 4, media: media)
+            renderSlide(stage, project, 0)
+            let started = Date()
+            for i in 0..<20 {
+                project[.layer(moved, .x)] = .value(0.3 + Double(i) / 50)
+                renderSlide(stage, project, 0)
+            }
+            line += String(format: " %dpx %.1f ms", width, Date().timeIntervalSince(started) / 20 * 1000)
+        }
+        print(line)
+    }
 }

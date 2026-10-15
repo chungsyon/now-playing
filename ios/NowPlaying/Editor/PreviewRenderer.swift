@@ -18,8 +18,11 @@ final class PreviewRenderer: @unchecked Sendable {
     }
 
     private let queue = DispatchQueue(label: "now-playing.preview", qos: .userInteractive)
-    /// Only touched on `queue`.
+    /// Only touched on `queue`. Two sizes are in use, sharp and quick (while
+    /// a finger is down), and each keeps its own frosted glass, which is slow
+    /// to make, so the last two are kept.
     private var stage: Stage?
+    private var previous: Stage?
     /// Only touched on the main thread.
     private var busy = false
     private var pending: Job?
@@ -41,7 +44,9 @@ final class PreviewRenderer: @unchecked Sendable {
         busy = true
         queue.async { [self] in
             if stage == nil || stage!.width != job.width || stage!.height != job.height {
-                stage = Stage(width: job.width, height: job.height, media: job.media)
+                let kept = previous.flatMap { $0.width == job.width && $0.height == job.height ? $0 : nil }
+                previous = stage
+                stage = kept ?? Stage(width: job.width, height: job.height, media: job.media)
             }
             let stage = stage!
             stage.media = job.media

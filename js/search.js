@@ -129,6 +129,7 @@ export function versionTag(song) {
   if (/\bdemo\b/.test(text)) return 'Demo';
   if (/instrumental|\(inst\.?\)|\[inst\.?\]/.test(text)) return 'Instrumental';
   if (/\bcover\b/.test(text)) return 'Cover';
+  if (/\bremix\b|\bmix\)/.test(text)) return 'Remix';
   return 'Original';
 }
 
