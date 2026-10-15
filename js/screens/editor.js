@@ -195,25 +195,52 @@ export async function enter(root, app) {
     onStart: pause,
   });
 
-  // Zoomed in, a drag that picks nothing up moves the view instead. Listened
-  // for after the gestures, so the selection is already settled by then.
+  // Zoomed in, a drag that picks nothing up moves the view instead, and two
+  // fingers that pick nothing up zoom it about the point between them. A
+  // pinch that starts on a layer is left to the layer. Listened for after
+  // the gestures, so the selection is already settled by then.
   let panning = null;
+  let pinch = null;
+  const touching = new Map();   // finger id -> where it is on screen
+  const between = () => {
+    const [a, b] = [...touching.values()];
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(b.x - a.x, b.y - a.y) };
+  };
+  const panFrom = point => ({ x: point.x, y: point.y, left: stageArea.scrollLeft, top: stageArea.scrollTop });
   overlay.addEventListener('pointerdown', event => {
-    if (zoom === 1 || app.state.selectedLayerId) return;
-    panning = { x: event.clientX, y: event.clientY, left: stageArea.scrollLeft, top: stageArea.scrollTop };
+    if (event.pointerType === 'touch') touching.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (app.state.selectedLayerId) return;
+    if (touching.size === 2) {
+      panning = null;
+      pinch = { ...between(), zoom };
+    } else if (zoom > 1 && !pinch) {
+      panning = panFrom({ x: event.clientX, y: event.clientY });
+    }
   });
   overlay.addEventListener('pointermove', event => {
+    if (touching.has(event.pointerId)) touching.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (pinch && touching.size === 2) {
+      const now = between();
+      zoomTo(pinch.zoom * now.d / Math.max(1, pinch.d), now);
+      // The picture follows the fingers as well as growing about them.
+      stageArea.scrollLeft -= now.x - pinch.x;
+      stageArea.scrollTop -= now.y - pinch.y;
+      pinch.x = now.x;
+      pinch.y = now.y;
+      return;
+    }
     if (!panning) return;
     stageArea.scrollLeft = panning.left - (event.clientX - panning.x);
     stageArea.scrollTop = panning.top - (event.clientY - panning.y);
   });
-  // Fingers on the slide, so a touch pinch is left to the layers below.
-  const touching = new Set();
-  overlay.addEventListener('pointerdown', event => {
-    if (event.pointerType === 'touch') touching.add(event.pointerId);
-  });
   for (const type of ['pointerup', 'pointercancel']) {
-    overlay.addEventListener(type, event => { panning = null; touching.delete(event.pointerId); });
+    overlay.addEventListener(type, event => {
+      touching.delete(event.pointerId);
+      panning = null;
+      // One finger lifted from a pinch: the other carries on moving the view.
+      if (pinch && touching.size === 1 && zoom > 1) panning = panFrom([...touching.values()][0]);
+      if (touching.size < 2) pinch = null;
+    });
   }
 
   // A trackpad pinch arrives as a wheel with Ctrl held, and Ctrl or Cmd with
