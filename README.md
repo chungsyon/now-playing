@@ -14,6 +14,8 @@ touches the network is the song search.
 
 **Live:** <https://chungsyon.github.io/now-playing/>
 
+**iPhone app:** a native SwiftUI version lives in [`ios/`](ios/README.md).
+
 ---
 
 ## Running it locally

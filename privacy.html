@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Now Playing: Privacy</title>
+<meta name="color-scheme" content="light dark">
+<style>
+  :root { --bg: #F2F2F7; --card: #FFFFFF; --text: #000000; --muted: rgba(60, 60, 67, 0.6); --tint: #FF2D55; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #000000; --card: #1C1C1E; --text: #FFFFFF; --muted: rgba(235, 235, 245, 0.6); --tint: #FF375F; }
+  }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.5 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 48px 16px 64px; }
+  h1 { font-size: 34px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 8px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); font-weight: 400; margin: 32px 16px 8px; }
+  section { background: var(--card); border-radius: 12px; padding: 4px 16px; }
+  p { margin: 12px 0; }
+  .lede { color: var(--muted); margin-bottom: 24px; }
+  a { color: var(--tint); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy</h1>
+  <p class="lede">Now Playing for iPhone, and the web version at this address. Last updated 14 October 2026.</p>
+
+  <h2>The short version</h2>
+  <section>
+    <p>Now Playing collects nothing about you. There are no accounts, no analytics, no advertising and no tracking.</p>
+  </section>
+
+  <h2>Your photos and work</h2>
+  <section>
+    <p>The photo you choose, the slide you make, your drafts and your saved styles stay on your device. They are never uploaded anywhere.</p>
+    <p>The app asks for permission only to <em>add</em> the finished video to your photo library. It cannot see the rest of your library: the photo you start with is chosen through the system picker, which hands over that one picture.</p>
+  </section>
+
+  <h2>Song search</h2>
+  <section>
+    <p>When you search for a song, the words you type are sent to two public music catalogues, Apple's iTunes Search API and the Deezer API, so they can answer. When you paste a Spotify or YouTube link, the link is sent to that service's public oEmbed endpoint to learn the song's name. The cover of the song you pick is then downloaded from the catalogue.</p>
+    <p>Nothing else is sent: no identifier, no account and nothing about your photo or your slide. Those services handle requests under their own privacy policies.</p>
+  </section>
+
+  <h2>Questions</h2>
+  <section>
+    <p>Open an issue at <a href="https://github.com/chungsyon/now-playing/issues">github.com/chungsyon/now-playing/issues</a>.</p>
+  </section>
+</main>
+</body>
+</html>

@@ -9,3 +9,11 @@ node_modules/
 *.jpeg
 *.png
 !assets/icons/*.png
+!ios/NowPlaying/Resources/Assets.xcassets/**/*.png
+
+# Xcode and Swift build output
+ios/.build/
+ios/.swiftpm/
+xcuserdata/
+DerivedData/
+*.xcuserstate
